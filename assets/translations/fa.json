@@ -50,5 +50,6 @@
   "tap_to_select": "برای انتخاب ضربه بزنید",
   "required_fields": "نام و کانفیگ الزامی است",
   "connecting": "در حال اتصال...",
-  "no_profile_warn": "ابتدا یک پروفایل انتخاب کنید"
+  "no_profile_warn": "ابتدا یک پروفایل انتخاب کنید",
+  "vpn_permission_denied": "اجازه VPN داده نشد"
 }

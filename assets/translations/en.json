@@ -50,5 +50,6 @@
   "tap_to_select": "Tap to select",
   "required_fields": "Name and config are required",
   "connecting": "Connecting...",
-  "no_profile_warn": "Please select a profile first"
+  "no_profile_warn": "Please select a profile first",
+  "vpn_permission_denied": "VPN permission denied"
 }
