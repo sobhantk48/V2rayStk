@@ -95,8 +95,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('cancel'.tr())),
-          ElevatedButton(onPressed: _changePassword, child: Text('save'.tr())),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: _changePassword,
+            child: Text('save'.tr()),
+          ),
         ],
       ),
     );
@@ -107,21 +113,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('settings'.tr()),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Language
           Card(
             child: ListTile(
               leading: const Icon(Icons.language, color: AppTheme.primary),
               title: Text('language'.tr()),
-              subtitle: Text(context.locale.languageCode == 'fa' ? 'persian'.tr() : 'english'.tr()),
-              trailing: const Icon(Icons.chevron_right),
+              subtitle: Text(
+                context.locale.languageCode == 'fa'
+                    ? 'persian'.tr()
+                    : 'english'.tr(),
+              ),
+              trailing: const Icon(Icons.chevron_left),
               onTap: () {
                 final newLocale = context.locale.languageCode == 'fa'
                     ? const Locale('en')
@@ -131,13 +136,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 12),
-
-          // Admin Login
           Card(
             child: ListTile(
               leading: const Icon(Icons.admin_panel_settings, color: AppTheme.primary),
               title: Text('admin_panel'.tr()),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_left),
               onTap: () {
                 Navigator.push(
                   context,
@@ -147,14 +150,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const SizedBox(height: 12),
-
-          // Change Password (only useful after knowing the password)
           Card(
             child: ListTile(
               leading: const Icon(Icons.lock_reset, color: AppTheme.primary),
               title: Text('change_password'.tr()),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_left),
               onTap: _showChangePasswordDialog,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: Text(
+              '${'version'.tr()} 1.0.0 • V2ray Stk',
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 13,
+              ),
             ),
           ),
         ],

@@ -44,7 +44,10 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
 
     if (name.isEmpty || config.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('نام و کانفیگ الزامی است'), backgroundColor: AppTheme.danger),
+        SnackBar(
+          content: Text('required_fields'.tr()),
+          backgroundColor: AppTheme.danger,
+        ),
       );
       return;
     }
@@ -69,7 +72,10 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('profile_saved'.tr()), backgroundColor: AppTheme.success),
+          SnackBar(
+            content: Text('profile_saved'.tr()),
+            backgroundColor: AppTheme.success,
+          ),
         );
         Navigator.pop(context);
       }
@@ -102,12 +108,14 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
             const SizedBox(height: 16),
             TextField(
               controller: _configCtrl,
-              maxLines: 6,
+              maxLines: 8,
+              textDirection: TextDirection.ltr,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
               decoration: InputDecoration(
                 labelText: 'config'.tr(),
                 alignLabelWithHint: true,
                 prefixIcon: const Padding(
-                  padding: EdgeInsets.only(bottom: 80),
+                  padding: EdgeInsets.only(bottom: 100),
                   child: Icon(Icons.code),
                 ),
               ),
@@ -115,9 +123,9 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
             const SizedBox(height: 16),
             TextField(
               controller: _remarkCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Remark (اختیاری)',
-                prefixIcon: Icon(Icons.notes),
+              decoration: InputDecoration(
+                labelText: 'remark'.tr(),
+                prefixIcon: const Icon(Icons.notes),
               ),
             ),
             const SizedBox(height: 32),
@@ -129,7 +137,10 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
                     ? const SizedBox(
                         height: 22,
                         width: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : Text('save'.tr()),
               ),

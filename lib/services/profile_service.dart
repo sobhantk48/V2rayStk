@@ -3,49 +3,20 @@ import 'package:uuid/uuid.dart';
 import '../models/profile.dart';
 
 class ProfileService {
-  static const boxName = 'profiles';
+  static const String _boxName = 'profiles';
   static final _uuid = Uuid();
 
-  static Future<Box<Profile>> get box async {
-    if (!Hive.isAdapterRegistered(0)) {
-      Hive.registerAdapter(ProfileAdapter());
+  static Future<Box<Profile>> _box() async {
+    if (!Hive.isBoxOpen(_boxName)) {
+      return await Hive.openBox<Profile>(_boxName);
     }
-    return await Hive.openBox<Profile>(boxName);
+    return Hive.box<Profile>(_boxName);
   }
 
   static Future<List<Profile>> getAll() async {
-    final b = await box;
-    return b.values.toList()
+    final box = await _box();
+    return box.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-  }
-
-  static Future<void> add(String name, String config, {String? remark}) async {
-    final b = await box;
-    final profile = Profile(
-      id: _uuid.v4(),
-      name: name,
-      config: config,
-      remark: remark,
-    );
-    await b.put(profile.id, profile);
-  }
-
-  static Future<void> update(Profile profile) async {
-    final b = await box;
-    await b.put(profile.id, profile);
-  }
-
-  static Future<void> delete(String id) async {
-    final b = await box;
-    await b.delete(id);
-  }
-
-  static Future<void> select(String id) async {
-    final b = await box;
-    for (final p in b.values) {
-      p.isSelected = p.id == id;
-      await p.save();
-    }
   }
 
   static Future<Profile?> getSelected() async {
@@ -54,6 +25,42 @@ class ProfileService {
       return list.firstWhere((p) => p.isSelected);
     } catch (_) {
       return list.isNotEmpty ? list.first : null;
+    }
+  }
+
+  static Future<void> add(String name, String config, {String? remark}) async {
+    final box = await _box();
+    final profile = Profile(
+      id: _uuid.v4(),
+      name: name,
+      config: config,
+      remark: remark,
+      isSelected: box.isEmpty,
+    );
+    await box.put(profile.id, profile);
+  }
+
+  static Future<void> update(Profile profile) async {
+    final box = await _box();
+    await box.put(profile.id, profile);
+  }
+
+  static Future<void> delete(String id) async {
+    final box = await _box();
+    final wasSelected = box.get(id)?.isSelected ?? false;
+    await box.delete(id);
+    if (wasSelected && box.isNotEmpty) {
+      final first = box.values.first;
+      first.isSelected = true;
+      await first.save();
+    }
+  }
+
+  static Future<void> select(String id) async {
+    final box = await _box();
+    for (final p in box.values) {
+      p.isSelected = p.id == id;
+      await p.save();
     }
   }
 }
