@@ -19,7 +19,19 @@ class V2rayVpnService : VpnService() {
         const val NOTIFICATION_ID = 1
         const val ACTION_CONNECT = "com.v2raystk.v2ray_stk.CONNECT"
         const val ACTION_DISCONNECT = "com.v2raystk.v2ray_stk.DISCONNECT"
-        var isRunning = false
+        const val ACTION_STATUS = "com.v2raystk.v2ray_stk.STATUS"
+        const val EXTRA_STATUS = "status"
+        const val EXTRA_UPLOAD = "upload"
+        const val EXTRA_DOWNLOAD = "download"
+
+        @Volatile
+        var isRunning: Boolean = false
+
+        @Volatile
+        var uploadBytes: Long = 0L
+
+        @Volatile
+        var downloadBytes: Long = 0L
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -36,9 +48,14 @@ class V2rayVpnService : VpnService() {
     }
 
     private fun startVpn(config: String) {
-        if (isRunning) return
+        if (isRunning) {
+            broadcastStatus("connected")
+            return
+        }
 
         try {
+            broadcastStatus("connecting")
+
             val builder = Builder()
                 .setSession("V2ray Stk")
                 .setMtu(1500)
@@ -52,15 +69,25 @@ class V2rayVpnService : VpnService() {
                 builder.setMetered(false)
             }
 
+            // Avoid routing our own app traffic into the tunnel in this skeleton phase
+            try {
+                builder.addDisallowedApplication(packageName)
+            } catch (_: Exception) {
+            }
+
             vpnInterface = builder.establish()
             if (vpnInterface == null) {
                 Log.e("V2rayVpn", "Failed to establish VPN interface")
+                broadcastStatus("disconnected")
                 stopSelf()
                 return
             }
 
             isRunning = true
+            uploadBytes = 0L
+            downloadBytes = 0L
             startForeground(NOTIFICATION_ID, createNotification("Connected"))
+            broadcastStatus("connected")
             Log.i("V2rayVpn", "VPN skeleton started. configLen=${config.length}")
         } catch (e: Exception) {
             Log.e("V2rayVpn", "startVpn error", e)
@@ -75,9 +102,27 @@ class V2rayVpnService : VpnService() {
         }
         vpnInterface = null
         isRunning = false
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        uploadBytes = 0L
+        downloadBytes = 0L
+
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: Exception) {
+        }
+
+        broadcastStatus("disconnected")
         stopSelf()
         Log.i("V2rayVpn", "VPN stopped")
+    }
+
+    private fun broadcastStatus(status: String) {
+        val intent = Intent(ACTION_STATUS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_STATUS, status)
+            putExtra(EXTRA_UPLOAD, uploadBytes)
+            putExtra(EXTRA_DOWNLOAD, downloadBytes)
+        }
+        sendBroadcast(intent)
     }
 
     private fun createNotification(status: String): Notification {
@@ -117,7 +162,15 @@ class V2rayVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        stopVpn()
+        if (isRunning) {
+            try {
+                vpnInterface?.close()
+            } catch (_: Exception) {
+            }
+            vpnInterface = null
+            isRunning = false
+            broadcastStatus("disconnected")
+        }
         super.onDestroy()
     }
 
