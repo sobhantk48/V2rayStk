@@ -1,40 +1,31 @@
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'theme/app_theme.dart';
+import 'models/profile.dart';
+import 'screens/user/user_home_page.dart';
 
-import 'core/theme/app_theme.dart';
-import 'features/user/presentation/user_home_page.dart';
-
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await EasyLocalization.ensureInitialized();
   await Hive.initFlutter();
 
-  // باز کردن باکس‌های لازم
-  await Hive.openBox('settings');
-  await Hive.openBox('profiles');
-  await Hive.openBox('admin');
-
-  // رمز پیش‌فرض ادمین
-  final adminBox = Hive.box('admin');
-  if (!adminBox.containsKey('password')) {
-    await adminBox.put('password', 'admin');
+  if (!Hive.isAdapterRegistered(0)) {
+    Hive.registerAdapter(ProfileAdapter());
   }
 
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0A1628),
-    ),
-  );
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarColor: AppTheme.bg,
+  ));
 
   runApp(
     EasyLocalization(
-      supportedLocales: const [Locale('en'), Locale('fa')],
+      supportedLocales: const [Locale('fa'), Locale('en')],
       path: 'assets/translations',
       fallbackLocale: const Locale('fa'),
       startLocale: const Locale('fa'),
@@ -45,18 +36,18 @@ Future<void> main() async {
   );
 }
 
-class V2rayStkApp extends ConsumerWidget {
+class V2rayStkApp extends StatelessWidget {
   const V2rayStkApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return MaterialApp(
       title: 'V2ray Stk',
       debugShowCheckedModeBanner: false,
+      theme: AppTheme.dark,
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,
       locale: context.locale,
-      theme: AppTheme.darkNeonTheme,
       home: const UserHomePage(),
     );
   }
