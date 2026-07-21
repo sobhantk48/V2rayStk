@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/app_providers.dart';
+import '../../providers/vpn_provider.dart';
 import '../../services/profile_service.dart';
+import '../../services/vpn_bridge.dart';
 import '../settings/settings_page.dart';
 
 class UserHomePage extends ConsumerStatefulWidget {
@@ -14,11 +17,14 @@ class UserHomePage extends ConsumerStatefulWidget {
 }
 
 class _UserHomePageState extends ConsumerState<UserHomePage> {
-  bool _connecting = false;
+  bool _busy = false;
 
   Future<void> _toggleConnection() async {
+    if (_busy) return;
+
     final selected = await ref.read(selectedProfileProvider.future);
     if (selected == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('no_profile_warn'.tr()),
@@ -28,17 +34,53 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
       return;
     }
 
-    final isConnected = ref.read(connectionStatusProvider);
-    if (isConnected) {
-      ref.read(connectionStatusProvider.notifier).state = false;
-      return;
-    }
+    final event = ref.read(vpnEventProvider).valueOrNull;
+    final isConnected = event?.isConnected ?? false;
 
-    setState(() => _connecting = true);
-    await Future.delayed(const Duration(milliseconds: 900)); // mock
-    if (mounted) {
+    setState(() => _busy = true);
+
+    try {
+      final controller = ref.read(vpnControllerProvider);
+
+      if (isConnected) {
+        await controller.disconnect();
+        ref.read(connectionStatusProvider.notifier).state = false;
+        return;
+      }
+
+      final ok = await controller.connect(config: selected.config);
+      if (!ok) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('vpn_permission_denied'.tr()),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+        return;
+      }
+      // Native EventChannel will flip UI to connected.
       ref.read(connectionStatusProvider.notifier).state = true;
-      setState(() => _connecting = false);
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? e.code),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      ref.read(connectionStatusProvider.notifier).state = false;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$e'),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      ref.read(connectionStatusProvider.notifier).state = false;
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -140,16 +182,45 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
     );
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    var value = bytes.toDouble();
+    var i = 0;
+    while (value >= 1024 && i < units.length - 1) {
+      value /= 1024;
+      i++;
+    }
+    final digits = value >= 100 ? 0 : (value >= 10 ? 1 : 2);
+    return '${value.toStringAsFixed(digits)} ${units[i]}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isConnected = ref.watch(connectionStatusProvider);
+    final vpnAsync = ref.watch(vpnEventProvider);
+    final vpnEvent = vpnAsync.valueOrNull;
     final selectedAsync = ref.watch(selectedProfileProvider);
 
-    final statusColor = isConnected ? AppTheme.success : AppTheme.primary;
-    final statusText = isConnected ? 'connected'.tr() : 'disconnected'.tr();
-    final buttonText = _connecting
+    final isConnected = vpnEvent?.isConnected ?? false;
+    final isConnecting =
+        _busy || (vpnEvent?.isConnecting ?? false);
+
+    final statusColor = isConnecting
+        ? AppTheme.primary
+        : (isConnected ? AppTheme.success : AppTheme.primary);
+
+    final statusText = isConnecting
+        ? 'connecting'.tr()
+        : (isConnected ? 'connected'.tr() : 'disconnected'.tr());
+
+    final buttonText = isConnecting
         ? 'connecting'.tr()
         : (isConnected ? 'disconnect'.tr() : 'connect'.tr());
+
+    final uploadText =
+        isConnected ? _formatBytes(vpnEvent?.upload ?? 0) : '--';
+    final downloadText =
+        isConnected ? _formatBytes(vpnEvent?.download ?? 0) : '--';
 
     return Scaffold(
       body: SafeArea(
@@ -186,7 +257,6 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
 
             const Spacer(flex: 2),
 
-            // Status + Power Button
             Text(
               statusText,
               style: TextStyle(
@@ -198,7 +268,7 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
             const SizedBox(height: 28),
 
             GestureDetector(
-              onTap: _connecting ? null : _toggleConnection,
+              onTap: isConnecting ? null : _toggleConnection,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 350),
                 width: 170,
@@ -218,11 +288,23 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      isConnected ? Icons.check_rounded : Icons.power_settings_new_rounded,
-                      size: 52,
-                      color: statusColor,
-                    ),
+                    if (isConnecting)
+                      SizedBox(
+                        width: 42,
+                        height: 42,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: statusColor,
+                        ),
+                      )
+                    else
+                      Icon(
+                        isConnected
+                            ? Icons.check_rounded
+                            : Icons.power_settings_new_rounded,
+                        size: 52,
+                        color: statusColor,
+                      ),
                     const SizedBox(height: 8),
                     Text(
                       buttonText,
@@ -244,11 +326,23 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  _statCard('ping'.tr(), isConnected ? '42' : '--', 'ms'.tr()),
+                  _statCard(
+                    'ping'.tr(),
+                    isConnected ? '—' : '--',
+                    'ms'.tr(),
+                  ),
                   const SizedBox(width: 12),
-                  _statCard('download'.tr(), isConnected ? '12.4' : '--', 'mbps'.tr()),
+                  _statCard(
+                    'download'.tr(),
+                    downloadText,
+                    isConnected ? '' : 'mbps'.tr(),
+                  ),
                   const SizedBox(width: 12),
-                  _statCard('upload'.tr(), isConnected ? '3.1' : '--', 'mbps'.tr()),
+                  _statCard(
+                    'upload'.tr(),
+                    uploadText,
+                    isConnected ? '' : 'mbps'.tr(),
+                  ),
                 ],
               ),
             ),
@@ -259,13 +353,16 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               child: Material(
-                color: AppTheme.card,
-                borderRadius: BorderRadius.circular(18),
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(16),
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16),
                   onTap: _showProfileSelector,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     child: Row(
                       children: [
                         const Icon(Icons.dns_rounded, color: AppTheme.primary),
@@ -274,18 +371,26 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
                           child: selectedAsync.when(
                             data: (p) => Text(
                               p?.name ?? 'select_profile'.tr(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: p != null
-                                    ? AppTheme.textPrimary
-                                    : AppTheme.textSecondary,
-                                fontWeight: FontWeight.w500,
+                                color: p == null
+                                    ? AppTheme.textSecondary
+                                    : AppTheme.primary,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            loading: () => Text('...'),
-                            error: (_, __) => Text('select_profile'.tr()),
+                            loading: () => Text(
+                              '…',
+                              style: TextStyle(color: AppTheme.textSecondary),
+                            ),
+                            error: (e, _) => Text('$e'),
                           ),
                         ),
-                        const Icon(Icons.chevron_left, color: AppTheme.primary),
+                        const Icon(
+                          Icons.keyboard_arrow_up_rounded,
+                          color: AppTheme.textSecondary,
+                        ),
                       ],
                     ),
                   ),
@@ -301,10 +406,11 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
   Widget _statCard(String title, String value, String unit) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
         decoration: BoxDecoration(
-          color: AppTheme.card,
+          color: AppTheme.surface,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
         ),
         child: Column(
           children: [
@@ -312,23 +418,17 @@ class _UserHomePageState extends ConsumerState<UserHomePage> {
               title,
               style: const TextStyle(
                 color: AppTheme.textSecondary,
-                fontSize: 13,
+                fontSize: 12,
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              value,
+              unit.isEmpty ? value : '$value $unit',
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 color: AppTheme.primary,
-                fontSize: 20,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              unit,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 12,
               ),
             ),
           ],
