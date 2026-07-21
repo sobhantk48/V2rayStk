@@ -10,7 +10,7 @@
     <application
         android:label="V2ray Stk"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@android:drawable/ic_dialog_info"
         android:usesCleartextTraffic="true"
         android:extractNativeLibs="true">
 
@@ -44,7 +44,6 @@
                 android:value="vpn"/>
         </service>
 
-        <!-- مهم: فقط embedding v2 -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

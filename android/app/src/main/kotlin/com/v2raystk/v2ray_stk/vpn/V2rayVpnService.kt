@@ -62,8 +62,6 @@ class V2rayVpnService : VpnService() {
             isRunning = true
             startForeground(NOTIFICATION_ID, createNotification("Connected"))
             Log.i("V2rayVpn", "VPN skeleton started. configLen=${config.length}")
-
-            // TODO: libbox + tun fd
         } catch (e: Exception) {
             Log.e("V2rayVpn", "startVpn error", e)
             stopVpn()
