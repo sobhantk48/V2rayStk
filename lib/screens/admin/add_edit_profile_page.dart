@@ -115,29 +115,23 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // کانفیگ همیشه LTR (برای لینک و JSON)
-            Directionality(
-              textDirection: TextDirection.ltr,
-              child: TextField(
-                controller: _configCtrl,
-                maxLines: 8,
-                textAlign: TextAlign.left,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'config'.tr(),
-                  alignLabelWithHint: true,
-                  prefixIcon: const Padding(
-                    padding: EdgeInsets.only(bottom: 100),
-                    child: Icon(Icons.code),
-                  ),
+            TextField(
+              controller: _configCtrl,
+              maxLines: 8,
+              textAlign: TextAlign.left,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+              ),
+              decoration: InputDecoration(
+                labelText: 'config'.tr(),
+                alignLabelWithHint: true,
+                prefixIcon: const Padding(
+                  padding: EdgeInsets.only(bottom: 100),
+                  child: Icon(Icons.code),
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
             TextField(
               controller: _remarkCtrl,
