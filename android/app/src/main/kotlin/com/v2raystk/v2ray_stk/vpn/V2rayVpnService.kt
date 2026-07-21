@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.v2raystk.v2ray_stk.MainActivity
-import com.v2raystk.v2ray_stk.R
 import io.flutter.Log
 
 class V2rayVpnService : VpnService() {
@@ -31,9 +30,7 @@ class V2rayVpnService : VpnService() {
                 val config = intent.getStringExtra("config") ?: ""
                 startVpn(config)
             }
-            ACTION_DISCONNECT -> {
-                stopVpn()
-            }
+            ACTION_DISCONNECT -> stopVpn()
         }
         return START_STICKY
     }
@@ -42,7 +39,6 @@ class V2rayVpnService : VpnService() {
         if (isRunning) return
 
         try {
-            // اسکلت Builder — بعداً با libbox کامل می‌شه
             val builder = Builder()
                 .setSession("V2ray Stk")
                 .setMtu(1500)
@@ -52,7 +48,6 @@ class V2rayVpnService : VpnService() {
                 .addDnsServer("8.8.8.8")
                 .setBlocking(true)
 
-            // برای اندروید جدید
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setMetered(false)
             }
@@ -66,11 +61,9 @@ class V2rayVpnService : VpnService() {
 
             isRunning = true
             startForeground(NOTIFICATION_ID, createNotification("Connected"))
-            Log.i("V2rayVpn", "VPN started (skeleton). Config length: ${config.length}")
+            Log.i("V2rayVpn", "VPN skeleton started. configLen=${config.length}")
 
-            // TODO: اینجا libbox رو با config واقعی استارت کن
-            // TODO: tun fd رو به libbox بده
-
+            // TODO: libbox + tun fd
         } catch (e: Exception) {
             Log.e("V2rayVpn", "startVpn error", e)
             stopVpn()
@@ -80,7 +73,8 @@ class V2rayVpnService : VpnService() {
     private fun stopVpn() {
         try {
             vpnInterface?.close()
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
         vpnInterface = null
         isRunning = false
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -93,14 +87,16 @@ class V2rayVpnService : VpnService() {
 
         val intent = Intent(this, MainActivity::class.java)
         val pending = PendingIntent.getActivity(
-            this, 0, intent,
+            this,
+            0,
+            intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("V2ray Stk")
             .setContentText(status)
-            .setSmallIcon(android.R.drawable.ic_lock_lock) // بعداً آیکون خودت بذار
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pending)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -114,11 +110,11 @@ class V2rayVpnService : VpnService() {
                 "VPN Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "V2ray Stk VPN notification"
+                description = "V2ray Stk VPN"
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
         }
     }
 
