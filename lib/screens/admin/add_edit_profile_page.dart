@@ -59,14 +59,18 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
         final updated = widget.profile!.copyWith(
           name: name,
           config: config,
-          remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
+          remark: _remarkCtrl.text.trim().isEmpty
+              ? null
+              : _remarkCtrl.text.trim(),
         );
         await ProfileService.update(updated);
       } else {
         await ProfileService.add(
           name,
           config,
-          remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
+          remark: _remarkCtrl.text.trim().isEmpty
+              ? null
+              : _remarkCtrl.text.trim(),
         );
       }
 
@@ -80,9 +84,14 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
         Navigator.pop(context);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.danger),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -106,20 +115,29 @@ class _AddEditProfilePageState extends State<AddEditProfilePage> {
               ),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _configCtrl,
-              maxLines: 8,
+
+            // کانفیگ همیشه LTR (برای لینک و JSON)
+            Directionality(
               textDirection: TextDirection.ltr,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              decoration: InputDecoration(
-                labelText: 'config'.tr(),
-                alignLabelWithHint: true,
-                prefixIcon: const Padding(
-                  padding: EdgeInsets.only(bottom: 100),
-                  child: Icon(Icons.code),
+              child: TextField(
+                controller: _configCtrl,
+                maxLines: 8,
+                textAlign: TextAlign.left,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'config'.tr(),
+                  alignLabelWithHint: true,
+                  prefixIcon: const Padding(
+                    padding: EdgeInsets.only(bottom: 100),
+                    child: Icon(Icons.code),
+                  ),
                 ),
               ),
             ),
+
             const SizedBox(height: 16),
             TextField(
               controller: _remarkCtrl,
