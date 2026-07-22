@@ -52,7 +52,6 @@ android {
         }
     }
 
-    // مهم: ndk.abiFilters نگذار (با --split-per-abi conflict می‌دهد)
     packagingOptions {
         jniLibs {
             useLegacyPackaging = true
@@ -66,6 +65,5 @@ flutter {
 
 dependencies {
     implementation "androidx.core:core-ktx:1.12.0"
-    // صریح: AAR روی classpath
     implementation files("libs/libbox.aar")
 }
