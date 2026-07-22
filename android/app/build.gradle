@@ -23,12 +23,13 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace = "com.v2raystk.v2ray_stk"
-    compileSdk = 34
+    namespace "com.v2raystk.v2ray_stk"
+    compileSdk 34
+    ndkVersion flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
@@ -36,45 +37,46 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.v2raystk.v2ray_stk"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = flutterVersionCode.toInteger()
-        versionName = flutterVersionName
-        multiDexEnabled = true
-
-        // IMPORTANT:
-        // Do NOT set ndk.abiFilters here when building with:
-        //   flutter build apk --split-per-abi
-        // Flutter/AGP already configures splits.abi — both together = conflict.
+        applicationId "com.v2raystk.v2ray_stk"
+        minSdk 24
+        targetSdk 34
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+        multiDexEnabled true
+        // ❌ NO ndk { abiFilters ... }  (conflict with --split-per-abi)
     }
+
+    // اگر signing داری، این بلوک را نگه دار/تنظیم کن
+    // buildTypes {
+    //     release {
+    //         signingConfig signingConfigs.debug
+    //     }
+    // }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
-            minifyEnabled = false
-            shrinkResources = false
+            // موقتاً debug signing برای CI (اگر keystore نداری)
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+        debug {
+            minifyEnabled false
         }
     }
 
-    packagingOptions {
-        pickFirst "lib/**/libbox.so"
-        pickFirst "lib/**/libc++_shared.so"
-        doNotStrip "**/libbox.so"
-    }
+    // اجازه بده Flutter با --split-per-abi خودش splits را مدیریت کند
+    // هیچ splits.abi دستی اضافه نکن مگر خودت کامل کنترلش کنی
 }
 
 flutter {
-    source = "../.."
-}
-
-repositories {
-    flatDir {
-        dirs "libs"
-    }
+    source "../.."
 }
 
 dependencies {
-    implementation files("libs/libbox.aar")
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10"
     implementation "androidx.multidex:multidex:2.0.1"
+
+    // libbox.aar (اگر داخل app/libs هست)
+    implementation(name: "libbox", ext: "aar")
 }
