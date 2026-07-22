@@ -16,10 +16,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Android VPN service backed by sing-box libbox.
- * API matches current libbox.aar:
+ *
+ * Real AAR API (javap):
  *  - Libbox.setup(basePath, workingPath, tempPath, fixAndroidStack)
- *  - Libbox.newService(config, platformInterface)
- *  - BoxService.start()/close()
+ *  - Libbox.newService(configJson, platformInterface) -> BoxService
+ *  - BoxService.start() / close()
+ *  - NO SetupOptions class in this AAR
  */
 class V2rayVpnService : VpnService() {
 
@@ -36,12 +38,12 @@ class V2rayVpnService : VpnService() {
     private var boxService: BoxService? = null
     private var platformInterface: BoxPlatformInterface? = null
     private val running = AtomicBoolean(false)
+    private val lock = Any()
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         try {
-            // Touch native lib early
             Libbox.touch()
         } catch (e: Throwable) {
             Log.e(TAG, "Libbox.touch failed", e)
@@ -54,15 +56,18 @@ class V2rayVpnService : VpnService() {
                 stopVpn()
                 return START_NOT_STICKY
             }
+
             ACTION_START, null -> {
                 val config = intent?.getStringExtra(EXTRA_CONFIG)
                 if (config.isNullOrBlank()) {
-                    Log.e(TAG, "missing config_json")
+                    Log.e(TAG, "missing EXTRA_CONFIG / config_json")
                     stopSelf()
                     return START_NOT_STICKY
                 }
+
                 startForeground(NOTIFICATION_ID, buildNotification("Connecting…"))
-                Thread {
+
+                Thread({
                     try {
                         startVpn(config)
                     } catch (e: Throwable) {
@@ -73,74 +78,106 @@ class V2rayVpnService : VpnService() {
                         }
                         stopVpn()
                     }
-                }.start()
+                }, "v2ray-stk-start").start()
+            }
+
+            else -> {
+                Log.w(TAG, "unknown action=${intent?.action}")
             }
         }
         return START_STICKY
     }
 
     private fun startVpn(configJson: String) {
-        if (!running.compareAndSet(false, true)) {
-            Log.w(TAG, "already running")
-            return
+        synchronized(lock) {
+            if (!running.compareAndSet(false, true)) {
+                Log.w(TAG, "already running")
+                return
+            }
+
+            val baseDir = File(filesDir, "singbox").apply { mkdirs() }
+            val workingDir = File(baseDir, "workdir").apply { mkdirs() }
+            val tempDir = File(cacheDir, "singbox_temp").apply { mkdirs() }
+
+            // IMPORTANT: this AAR has NO SetupOptions
+            // setup(basePath, workingPath, tempPath, fixAndroidStack)
+            Libbox.setup(
+                baseDir.absolutePath,
+                workingDir.absolutePath,
+                tempDir.absolutePath,
+                false,
+            )
+
+            try {
+                Libbox.redirectStderr(File(baseDir, "stderr.log").absolutePath)
+            } catch (e: Exception) {
+                Log.w(TAG, "redirectStderr: ${e.message}")
+            }
+
+            try {
+                Libbox.checkConfig(configJson)
+            } catch (e: Exception) {
+                running.set(false)
+                throw IllegalArgumentException("invalid sing-box config: ${e.message}", e)
+            }
+
+            // Close previous native service if any
+            try {
+                boxService?.close()
+            } catch (_: Exception) {
+            }
+            boxService = null
+
+            try {
+                platformInterface?.closeTun()
+            } catch (_: Exception) {
+            }
+
+            val iface = BoxPlatformInterface(this)
+            platformInterface = iface
+
+            val service = Libbox.newService(configJson, iface)
+            boxService = service
+            service.start()
+
+            val version = try {
+                Libbox.version()
+            } catch (_: Throwable) {
+                "?"
+            }
+
+            startForeground(NOTIFICATION_ID, buildNotification("Connected"))
+            Log.i(TAG, "sing-box started version=$version")
         }
-
-        // Working dirs for sing-box
-        val baseDir = File(filesDir, "singbox").apply { mkdirs() }
-        val workingDir = File(baseDir, "workdir").apply { mkdirs() }
-        val tempDir = File(cacheDir, "singbox_temp").apply { mkdirs() }
-
-        // IMPORTANT: no SetupOptions in this AAR
-        // setup(basePath, workingPath, tempPath, fixAndroidStack)
-        Libbox.setup(
-            baseDir.absolutePath,
-            workingDir.absolutePath,
-            tempDir.absolutePath,
-            false,
-        )
-
-        try {
-            Libbox.redirectStderr(File(baseDir, "stderr.log").absolutePath)
-        } catch (e: Exception) {
-            Log.w(TAG, "redirectStderr: ${e.message}")
-        }
-
-        // Optional: validate config
-        try {
-            Libbox.checkConfig(configJson)
-        } catch (e: Exception) {
-            throw IllegalArgumentException("invalid sing-box config: ${e.message}", e)
-        }
-
-        val iface = BoxPlatformInterface(this)
-        platformInterface = iface
-
-        val service = Libbox.newService(configJson, iface)
-        boxService = service
-        service.start()
-
-        startForeground(NOTIFICATION_ID, buildNotification("Connected"))
-        Log.i(TAG, "sing-box started, version=${try { Libbox.version() } catch (_: Throwable) { "?" }}")
     }
 
     private fun stopVpn() {
-        running.set(false)
-        try {
-            boxService?.close()
-        } catch (e: Exception) {
-            Log.w(TAG, "box close: ${e.message}")
-        }
-        boxService = null
+        synchronized(lock) {
+            running.set(false)
 
-        try {
-            platformInterface?.closeTun()
-        } catch (_: Exception) {
-        }
-        platformInterface = null
+            try {
+                boxService?.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "box close: ${e.message}")
+            }
+            boxService = null
 
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-        Log.i(TAG, "vpn stopped")
+            try {
+                platformInterface?.closeTun()
+            } catch (_: Exception) {
+            }
+            platformInterface = null
+
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } catch (_: Exception) {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+
+            stopSelf()
+            Log.i(TAG, "vpn stopped")
+        }
     }
 
     override fun onDestroy() {
@@ -160,13 +197,16 @@ class V2rayVpnService : VpnService() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(NotificationManager::class.java)
+            val nm = getSystemService(NotificationManager::class.java) ?: return
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "VPN",
                 NotificationManager.IMPORTANCE_LOW,
-            )
-            nm?.createNotificationChannel(channel)
+            ).apply {
+                description = "V2ray Stk VPN status"
+                setShowBadge(false)
+            }
+            nm.createNotificationChannel(channel)
         }
     }
 
