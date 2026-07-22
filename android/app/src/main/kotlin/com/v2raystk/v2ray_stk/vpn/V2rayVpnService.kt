@@ -11,6 +11,12 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.v2raystk.v2ray_stk.MainActivity
 import io.flutter.Log
+import io.nekohasekai.libbox.BoxService
+import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.SetupOptions
+import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class V2rayVpnService : VpnService() {
 
@@ -32,19 +38,59 @@ class V2rayVpnService : VpnService() {
 
         @Volatile
         var downloadBytes: Long = 0L
+
+        private val libboxReady = AtomicBoolean(false)
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var boxService: BoxService? = null
+    private val worker = Executors.newSingleThreadExecutor()
+
+    override fun onCreate() {
+        super.onCreate()
+        ensureLibboxSetup()
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 val config = intent.getStringExtra("config") ?: ""
-                startVpn(config)
+                worker.execute { startVpn(config) }
             }
-            ACTION_DISCONNECT -> stopVpn()
+            ACTION_DISCONNECT -> {
+                worker.execute { stopVpn() }
+            }
         }
         return START_STICKY
+    }
+
+    private fun ensureLibboxSetup() {
+        if (libboxReady.get()) return
+        synchronized(libboxReady) {
+            if (libboxReady.get()) return
+            try {
+                val base = File(filesDir, "singbox").apply { mkdirs() }
+                val working = File(base, "working").apply { mkdirs() }
+                val temp = File(cacheDir, "singbox_tmp").apply { mkdirs() }
+
+                val options = SetupOptions()
+                options.basePath = base.absolutePath
+                options.workingPath = working.absolutePath
+                options.tempPath = temp.absolutePath
+                // optional fields differ by libbox version; ignore if missing at compile time
+
+                Libbox.setup(options)
+                try {
+                    Libbox.setMemoryLimit(false)
+                } catch (_: Throwable) {
+                }
+
+                libboxReady.set(true)
+                Log.i("V2rayVpn", "Libbox setup OK base=${base.absolutePath}")
+            } catch (e: Exception) {
+                Log.e("V2rayVpn", "Libbox setup failed", e)
+            }
+        }
     }
 
     private fun startVpn(config: String) {
@@ -53,54 +99,62 @@ class V2rayVpnService : VpnService() {
             return
         }
 
+        if (config.isBlank()) {
+            Log.e("V2rayVpn", "Empty config")
+            broadcastStatus("error")
+            stopSelf()
+            return
+        }
+
         try {
             broadcastStatus("connecting")
-
-            val builder = Builder()
-                .setSession("V2ray Stk")
-                .setMtu(1500)
-                .addAddress("10.0.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("1.1.1.1")
-                .addDnsServer("8.8.8.8")
-                .setBlocking(true)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                builder.setMetered(false)
+            ensureLibboxSetup()
+            if (!libboxReady.get()) {
+                throw IllegalStateException("Libbox is not ready")
             }
 
-            // Avoid routing our own app traffic into the tunnel in this skeleton phase
-            try {
-                builder.addDisallowedApplication(packageName)
-            } catch (_: Exception) {
+            // Minimal sanity: sing-box JSON usually starts with {
+            val trimmed = config.trim()
+            if (!trimmed.startsWith("{")) {
+                throw IllegalArgumentException(
+                    "Config must be sing-box JSON object. Got: ${trimmed.take(40)}"
+                )
             }
 
-            vpnInterface = builder.establish()
-            if (vpnInterface == null) {
-                Log.e("V2rayVpn", "Failed to establish VPN interface")
-                broadcastStatus("disconnected")
-                stopSelf()
-                return
+            val platform = BoxPlatformInterface(this) { pfd ->
+                vpnInterface = pfd
             }
+
+            val service = Libbox.newService(trimmed, platform)
+            service.start()
+            boxService = service
 
             isRunning = true
             uploadBytes = 0L
             downloadBytes = 0L
             startForeground(NOTIFICATION_ID, createNotification("Connected"))
             broadcastStatus("connected")
-            Log.i("V2rayVpn", "VPN skeleton started. configLen=${config.length}")
+            Log.i("V2rayVpn", "libbox started, configLen=${trimmed.length}")
         } catch (e: Exception) {
-            Log.e("V2rayVpn", "startVpn error", e)
-            stopVpn()
+            Log.e("V2rayVpn", "startVpn error: ${e.message}", e)
+            cleanupBox()
+            isRunning = false
+            broadcastStatus("error")
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } catch (_: Exception) {
+            }
+            stopSelf()
         }
     }
 
     private fun stopVpn() {
         try {
-            vpnInterface?.close()
-        } catch (_: Exception) {
+            cleanupBox()
+        } catch (e: Exception) {
+            Log.e("V2rayVpn", "stopVpn cleanup error", e)
         }
-        vpnInterface = null
+
         isRunning = false
         uploadBytes = 0L
         downloadBytes = 0L
@@ -113,6 +167,20 @@ class V2rayVpnService : VpnService() {
         broadcastStatus("disconnected")
         stopSelf()
         Log.i("V2rayVpn", "VPN stopped")
+    }
+
+    private fun cleanupBox() {
+        try {
+            boxService?.close()
+        } catch (_: Exception) {
+        }
+        boxService = null
+
+        try {
+            vpnInterface?.close()
+        } catch (_: Exception) {
+        }
+        vpnInterface = null
     }
 
     private fun broadcastStatus(status: String) {
@@ -162,12 +230,11 @@ class V2rayVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        if (isRunning) {
+        worker.execute {
             try {
-                vpnInterface?.close()
+                cleanupBox()
             } catch (_: Exception) {
             }
-            vpnInterface = null
             isRunning = false
             broadcastStatus("disconnected")
         }
@@ -175,7 +242,7 @@ class V2rayVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        stopVpn()
+        worker.execute { stopVpn() }
         super.onRevoke()
     }
 }
