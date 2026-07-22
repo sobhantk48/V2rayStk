@@ -69,6 +69,5 @@ coverage/
 *~
 
 # Sing-box / native
-**/android/app/libs/*.aar
 !**/android/app/libs/.gitkeep
 *.so
