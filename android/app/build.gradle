@@ -13,24 +13,26 @@ if (localPropertiesFile.exists()) {
 }
 
 def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
-if (flutterVersionCode == null) {
+if (flutterVersionCode == null || flutterVersionCode.trim().isEmpty()) {
     flutterVersionCode = "1"
 }
 
 def flutterVersionName = localProperties.getProperty("flutter.versionName")
-if (flutterVersionName == null) {
-    flutterVersionName = "1.0"
+if (flutterVersionName == null || flutterVersionName.trim().isEmpty()) {
+    flutterVersionName = "1.0.0"
 }
 
 android {
     namespace = "com.v2raystk.v2ray_stk"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+
+    // Explicit ints — avoid null cast from flutter.* extension
+    compileSdk = 34
+
+    ndkVersion = "26.1.10909125"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // keep desugar OFF unless you explicitly need Java 8+ APIs on old minSdk
         coreLibraryDesugaringEnabled = false
     }
 
@@ -41,19 +43,16 @@ android {
     defaultConfig {
         applicationId = "com.v2raystk.v2ray_stk"
         minSdk = 24
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
         multiDexEnabled = true
 
-        // Prefer real ABIs that libbox usually ships
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
         }
     }
 
-    // IMPORTANT: do not combine conflicting splits with abiFilters in CI.
-    // --split-per-abi is handled by Flutter; keep Gradle splits disabled.
     splits {
         abi {
             enable false
@@ -62,7 +61,6 @@ android {
 
     buildTypes {
         release {
-            // CI unsigned/debug-signing is fine for now; replace later with real keystore
             signingConfig = signingConfigs.debug
             minifyEnabled = false
             shrinkResources = false
@@ -108,9 +106,7 @@ repositories {
 }
 
 dependencies {
-    // Explicit local AAR (must exist at android/app/libs/libbox.aar)
     implementation files("libs/libbox.aar")
-
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "com.google.android.material:material:1.11.0"
     implementation "androidx.multidex:multidex:2.0.1"
