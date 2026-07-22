@@ -56,7 +56,8 @@ android {
         }
     }
 
-    packaging {
+    // مهم: برای AGP قدیمی‌تر Flutter
+    packagingOptions {
         jniLibs {
             useLegacyPackaging = true
         }
