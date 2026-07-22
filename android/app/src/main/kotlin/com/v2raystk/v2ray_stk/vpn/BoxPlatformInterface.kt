@@ -4,12 +4,12 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import io.flutter.Log
-import io.nekohasekai.libbox.InterfaceUpdateListener
-import io.nekohasekai.libbox.NetworkInterfaceIterator
-import io.nekohasekai.libbox.PlatformInterface
-import io.nekohasekai.libbox.StringIterator
-import io.nekohasekai.libbox.TunOptions
-import io.nekohasekai.libbox.WIFIState
+import libbox.InterfaceUpdateListener
+import libbox.NetworkInterfaceIterator
+import libbox.PlatformInterface
+import libbox.StringIterator
+import libbox.TunOptions
+import libbox.WIFIState
 import java.net.InetSocketAddress
 
 /**
@@ -146,11 +146,11 @@ class BoxPlatformInterface(
 
     override fun readWIFIState(): WIFIState? = null
 
-    override fun localDNSTransport(): io.nekohasekai.libbox.LocalDNSTransport? = null
+    override fun localDNSTransport(): libbox.LocalDNSTransport? = null
 
     // Some libbox versions expose these; safe no-op stubs if present in interface
     override fun systemCertificates(): StringIterator? = null
 
-    override fun sendNotification(notification: io.nekohasekai.libbox.Notification?) {
+    override fun sendNotification(notification: libbox.Notification?) {
     }
 }

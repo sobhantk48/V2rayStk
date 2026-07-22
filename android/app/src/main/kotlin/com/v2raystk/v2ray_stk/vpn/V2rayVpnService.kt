@@ -11,9 +11,9 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.v2raystk.v2ray_stk.MainActivity
 import io.flutter.Log
-import io.nekohasekai.libbox.BoxService
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.SetupOptions
+import libbox.BoxService
+import libbox.Libbox
+import libbox.SetupOptions
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
