@@ -1,0 +1,11 @@
+/gradlew
+/gradlew.bat
+/local.properties
+/.gradle
+/build
+/captures
+GeneratedPluginRegistrant.java
+
+# Keep native AAR tracked
+!/libs/
+!/libs/**
