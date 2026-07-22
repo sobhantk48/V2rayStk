@@ -43,9 +43,10 @@ android {
         versionName = flutterVersionName
         multiDexEnabled = true
 
-        ndk {
-            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
-        }
+        // IMPORTANT:
+        // Do NOT set ndk.abiFilters here when building with:
+        //   flutter build apk --split-per-abi
+        // Flutter/AGP already configures splits.abi — both together = conflict.
     }
 
     buildTypes {
