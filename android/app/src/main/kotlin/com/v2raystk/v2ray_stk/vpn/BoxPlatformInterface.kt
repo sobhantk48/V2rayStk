@@ -1,9 +1,10 @@
 package com.v2raystk.v2ray_stk.vpn
 
+import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import io.flutter.Log
+import android.util.Log
 import libbox.InterfaceUpdateListener
 import libbox.NetworkInterfaceIterator
 import libbox.PlatformInterface
@@ -13,93 +14,157 @@ import libbox.WIFIState
 import java.net.InetSocketAddress
 
 /**
- * Bridge between sing-box/libbox and Android VpnService.
- * Libbox calls openTun(); we create the system TUN and return its fd.
+ * Bridge between Android VpnService and sing-box libbox PlatformInterface.
+ * Signatures must match libbox.aar exactly (package: libbox).
  */
 class BoxPlatformInterface(
-    private val service: VpnService,
-    private val onTunCreated: (ParcelFileDescriptor) -> Unit,
+    private val service: V2rayVpnService,
 ) : PlatformInterface {
 
-    override fun openTun(options: TunOptions): Int {
-        val builder = service.Builder()
-            .setSession("V2ray Stk")
-            .setMtu(options.mtu)
+    companion object {
+        private const val TAG = "BoxPlatformInterface"
+    }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            builder.setMetered(false)
+    private var tunFd: ParcelFileDescriptor? = null
+
+    override fun openTun(options: TunOptions): Int {
+        // Close previous tun if any
+        try {
+            tunFd?.close()
+        } catch (_: Exception) {
         }
+        tunFd = null
+
+        val builder = service.Builder()
+        builder.setSession("V2ray Stk")
+        builder.setMtu(options.mtu.coerceAtLeast(1280))
 
         // IPv4 addresses
-        try {
-            val inet4 = options.inet4Address
-            while (inet4.hasNext()) {
-                val prefix = inet4.next()
-                builder.addAddress(prefix.address(), prefix.prefix())
-            }
-        } catch (e: Exception) {
-            Log.w("BoxPlatform", "inet4Address: ${e.message}")
-            builder.addAddress("10.0.0.2", 32)
-        }
-
-        // IPv6 addresses (optional)
-        try {
-            val inet6 = options.inet6Address
-            while (inet6.hasNext()) {
-                val prefix = inet6.next()
-                builder.addAddress(prefix.address(), prefix.prefix())
-            }
-        } catch (e: Exception) {
-            Log.w("BoxPlatform", "inet6Address: ${e.message}")
-        }
+        addAddresses(builder, options.inet4Address)
+        // IPv6 addresses
+        addAddresses(builder, options.inet6Address)
 
         // Routes
         if (options.autoRoute) {
-            try {
-                val route4 = options.inet4RouteAddress
-                var hasRoute = false
-                while (route4.hasNext()) {
-                    val prefix = route4.next()
-                    builder.addRoute(prefix.address(), prefix.prefix())
-                    hasRoute = true
-                }
-                if (!hasRoute) {
-                    builder.addRoute("0.0.0.0", 0)
-                }
-            } catch (e: Exception) {
-                builder.addRoute("0.0.0.0", 0)
-            }
+            addRoutes(builder, options.inet4RouteAddress, ipv6 = false, fallbackDefault = true)
+            addRoutes(builder, options.inet6RouteAddress, ipv6 = true, fallbackDefault = false)
 
+            // Exclude routes if available
+            // (some configs only use include ranges)
             try {
-                val route6 = options.inet6RouteAddress
-                while (route6.hasNext()) {
-                    val prefix = route6.next()
-                    builder.addRoute(prefix.address(), prefix.prefix())
-                }
+                addRoutes(builder, options.inet4RouteRange, ipv6 = false, fallbackDefault = false)
             } catch (_: Exception) {
             }
-        } else {
-            builder.addRoute("0.0.0.0", 0)
+            try {
+                addRoutes(builder, options.inet6RouteRange, ipv6 = true, fallbackDefault = false)
+            } catch (_: Exception) {
+            }
         }
 
         // DNS
         try {
             val dns = options.dnsServerAddress
-            while (dns.hasNext()) {
-                builder.addDnsServer(dns.next())
+            if (!dns.isNullOrBlank()) {
+                builder.addDnsServer(dns)
             }
         } catch (e: Exception) {
+            Log.w(TAG, "dnsServerAddress: ${e.message}")
             builder.addDnsServer("1.1.1.1")
-            builder.addDnsServer("8.8.8.8")
         }
 
-        // Do not exclude ourselves: libbox uses protect() for outbound sockets.
-        val pfd = builder.establish()
-            ?: throw IllegalStateException("Failed to establish VPN interface")
+        // Per-app proxy include/exclude
+        try {
+            applyPackages(builder, options.includePackage, include = true)
+            applyPackages(builder, options.excludePackage, include = false)
+        } catch (e: Exception) {
+            Log.w(TAG, "package filter: ${e.message}")
+        }
 
-        onTunCreated(pfd)
-        Log.i("BoxPlatform", "TUN established fd=${pfd.fd}")
-        return pfd.fd
+        // Always allow our own package
+        try {
+            builder.addDisallowedApplication(service.packageName)
+        } catch (_: Exception) {
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setMetered(false)
+        }
+
+        val pfd = builder.establish()
+            ?: throw IllegalStateException("VpnService.Builder.establish() returned null")
+
+        tunFd = pfd
+        val fd = pfd.fd
+        Log.i(TAG, "openTun ok, fd=$fd mtu=${options.mtu}")
+        return fd
+    }
+
+    private fun addAddresses(builder: VpnService.Builder, iterator: libbox.RoutePrefixIterator?) {
+        if (iterator == null) return
+        while (iterator.hasNext()) {
+            val prefix = iterator.next()
+            val addr = prefix.address()
+            val prefixLen = prefix.prefix()
+            try {
+                builder.addAddress(addr, prefixLen)
+            } catch (e: Exception) {
+                Log.w(TAG, "addAddress $addr/$prefixLen: ${e.message}")
+            }
+        }
+    }
+
+    private fun addRoutes(
+        builder: VpnService.Builder,
+        iterator: libbox.RoutePrefixIterator?,
+        ipv6: Boolean,
+        fallbackDefault: Boolean,
+    ) {
+        var count = 0
+        if (iterator != null) {
+            while (iterator.hasNext()) {
+                val prefix = iterator.next()
+                val addr = prefix.address()
+                val prefixLen = prefix.prefix()
+                try {
+                    builder.addRoute(addr, prefixLen)
+                    count++
+                } catch (e: Exception) {
+                    Log.w(TAG, "addRoute $addr/$prefixLen: ${e.message}")
+                }
+            }
+        }
+        if (count == 0 && fallbackDefault) {
+            try {
+                if (!ipv6) {
+                    builder.addRoute("0.0.0.0", 0)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "default route: ${e.message}")
+            }
+        }
+    }
+
+    private fun applyPackages(
+        builder: VpnService.Builder,
+        iterator: StringIterator?,
+        include: Boolean,
+    ) {
+        if (iterator == null) return
+        while (iterator.hasNext()) {
+            val pkg = iterator.next()
+            if (pkg.isNullOrBlank()) continue
+            try {
+                if (include) {
+                    builder.addAllowedApplication(pkg)
+                } else {
+                    builder.addDisallowedApplication(pkg)
+                }
+            } catch (e: PackageManager.NameNotFoundException) {
+                Log.w(TAG, "package not found: $pkg")
+            } catch (e: Exception) {
+                Log.w(TAG, "package $pkg: ${e.message}")
+            }
+        }
     }
 
     override fun usePlatformAutoDetectInterfaceControl(): Boolean = true
@@ -108,17 +173,18 @@ class BoxPlatformInterface(
         try {
             service.protect(fd)
         } catch (e: Exception) {
-            Log.e("BoxPlatform", "protect($fd) failed", e)
+            Log.w(TAG, "protect($fd): ${e.message}")
         }
     }
 
     override fun writeLog(message: String?) {
-        if (!message.isNullOrBlank()) {
-            Log.i("libbox", message)
-        }
+        Log.i(TAG, message ?: "")
     }
 
-    override fun useProcFS(): Boolean = false
+    override fun useProcFS(): Boolean {
+        // On modern Android, Connectivity/Network APIs are preferred
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
+    }
 
     override fun findConnectionOwner(
         ipProtocol: Int,
@@ -126,31 +192,70 @@ class BoxPlatformInterface(
         sourcePort: Int,
         destinationAddress: String?,
         destinationPort: Int,
-    ): Int = -1
+    ): Int {
+        // Optional; return -1 if unknown
+        return -1
+    }
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
-        // Optional: network callback can be added later
+        // Optional for first bring-up
+        Log.d(TAG, "startDefaultInterfaceMonitor")
     }
 
     override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
+        Log.d(TAG, "closeDefaultInterfaceMonitor")
     }
 
-    override fun getInterfaces(): NetworkInterfaceIterator? = null
+    override fun getInterfaces(): NetworkInterfaceIterator {
+        return EmptyNetworkInterfaceIterator
+    }
 
     override fun underNetworkExtension(): Boolean = false
 
     override fun includeAllNetworks(): Boolean = false
 
     override fun clearDNSCache() {
+        // no-op on Android app side
     }
 
     override fun readWIFIState(): WIFIState? = null
 
-    override fun localDNSTransport(): libbox.LocalDNSTransport? = null
-
-    // Some libbox versions expose these; safe no-op stubs if present in interface
-    override fun systemCertificates(): StringIterator? = null
-
-    override fun sendNotification(notification: libbox.Notification?) {
+    override fun packageNameByUid(uid: Int): String {
+        return try {
+            val pkgs = service.packageManager.getPackagesForUid(uid)
+            pkgs?.firstOrNull() ?: ""
+        } catch (_: Exception) {
+            ""
+        }
     }
+
+    override fun uidByPackageName(packageName: String?): Int {
+        if (packageName.isNullOrBlank()) return -1
+        return try {
+            service.packageManager.getApplicationInfo(packageName, 0).uid
+        } catch (_: Exception) {
+            -1
+        }
+    }
+
+    override fun usePlatformDefaultInterfaceMonitor(): Boolean = false
+
+    override fun usePlatformInterfaceGetter(): Boolean = false
+
+    fun closeTun() {
+        try {
+            tunFd?.close()
+        } catch (_: Exception) {
+        }
+        tunFd = null
+    }
+}
+
+/**
+ * Minimal empty iterator so getInterfaces() compiles & is safe.
+ * Can be replaced later with real NetworkInterface listing.
+ */
+private object EmptyNetworkInterfaceIterator : NetworkInterfaceIterator {
+    override fun hasNext(): Boolean = false
+    override fun next(): libbox.NetworkInterface? = null
 }
