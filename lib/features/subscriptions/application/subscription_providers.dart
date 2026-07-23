@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/storage/local_storage_service.dart';
 import '../../profiles/application/profile_providers.dart';
 import '../data/local_subscription_repository.dart';
 import '../data/subscription_repository.dart';
@@ -7,7 +8,8 @@ import '../domain/subscription.dart';
 
 final FutureProvider<SubscriptionRepository> subscriptionRepositoryProvider =
     FutureProvider<SubscriptionRepository>((Ref ref) async {
-  final storage = await ref.watch(localStorageProvider.future);
+  final LocalStorageService storage =
+      await ref.watch(localStorageProvider.future);
   return LocalSubscriptionRepository(storage);
 });
 

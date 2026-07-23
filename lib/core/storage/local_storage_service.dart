@@ -2,8 +2,14 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../features/profiles/domain/profile.dart';
+import '../../features/subscriptions/domain/subscription.dart';
+
 class LocalStorageService {
   LocalStorageService(this._preferences);
+
+  static const String _profilesKey = 'profiles';
+  static const String _subscriptionsKey = 'subscriptions';
 
   final SharedPreferences _preferences;
 
@@ -13,25 +19,35 @@ class LocalStorageService {
     return LocalStorageService(preferences);
   }
 
-  Future<void> saveJsonList(
-    String key,
-    List<Map<String, dynamic>> value,
-  ) async {
-    final String encoded = jsonEncode(value);
-    await _preferences.setString(key, encoded);
+  Future<List<Profile>> loadProfiles() async {
+    final List<String> rawItems = _preferences.getStringList(_profilesKey) ?? <String>[];
+    return rawItems
+        .map((String item) => Profile.fromJson(jsonDecode(item) as Map<String, dynamic>))
+        .toList();
   }
 
-  List<Map<String, dynamic>> readJsonList(String key) {
-    final String? raw = _preferences.getString(key);
-    if (raw == null || raw.isEmpty) {
-      return <Map<String, dynamic>>[];
-    }
+  Future<void> saveProfiles(List<Profile> profiles) async {
+    final List<String> rawItems = profiles
+        .map((Profile item) => jsonEncode(item.toJson()))
+        .toList();
+    await _preferences.setStringList(_profilesKey, rawItems);
+  }
 
-    final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
-    return decoded
+  Future<List<Subscription>> loadSubscriptions() async {
+    final List<String> rawItems =
+        _preferences.getStringList(_subscriptionsKey) ?? <String>[];
+    return rawItems
         .map(
-          (dynamic item) => Map<String, dynamic>.from(item as Map),
+          (String item) =>
+              Subscription.fromJson(jsonDecode(item) as Map<String, dynamic>),
         )
         .toList();
+  }
+
+  Future<void> saveSubscriptions(List<Subscription> subscriptions) async {
+    final List<String> rawItems = subscriptions
+        .map((Subscription item) => jsonEncode(item.toJson()))
+        .toList();
+    await _preferences.setStringList(_subscriptionsKey, rawItems);
   }
 }

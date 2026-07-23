@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../../core/widgets/app_scaffold.dart';
 
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return const AppScaffold(
-      title: 'Settings',
-      currentIndex: 3,
+      title: 'Home',
+      currentIndex: 0,
       body: Center(
-        child: Text('Settings module placeholder.'),
+        child: Text('V2ray Stk is ready for phase 2.'),
       ),
     );
   }

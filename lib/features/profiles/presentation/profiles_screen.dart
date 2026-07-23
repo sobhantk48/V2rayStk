@@ -11,7 +11,7 @@ class ProfilesScreen extends StatelessWidget {
       title: 'Profiles',
       currentIndex: 1,
       body: Center(
-        child: Text('Profiles module will be implemented in phase 1.'),
+        child: Text('Profiles module placeholder.'),
       ),
     );
   }
