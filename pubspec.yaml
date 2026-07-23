@@ -1,46 +1,24 @@
 name: v2ray_stk
-description: V2ray Stk - Professional Sing-box multi-protocol client (Admin + User)
-publish_to: 'none'
-version: 1.0.1+2
+description: V2ray Stk secure proxy client
+publish_to: none
+version: 1.0.0+1
 
 environment:
-  sdk: '>=3.2.0 <4.0.0'
+  sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  flutter_localizations:
-    sdk: flutter
-  cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
-  easy_localization: ^3.0.7
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
-  path_provider: ^2.1.3
   shared_preferences: ^2.2.3
-  uuid: ^4.4.2
-  google_fonts: ^6.2.1
-  intl: any
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^3.0.2
 
 flutter:
   uses-material-design: true
   assets:
-    - assets/icons/
-    - assets/translations/
-    - assets/images/
-
-flutter_launcher_icons:
-  android: true
-  ios: false
-  image_path: "assets/icons/app_icon.png"
-  adaptive_icon_background: "#0B1224"
-  adaptive_icon_foreground: "assets/icons/app_icon.png"
-  adaptive_icon_foreground_inset: 16
-  min_sdk_android: 21
+    - assets/config/

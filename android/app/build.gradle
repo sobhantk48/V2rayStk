@@ -1,82 +1,24 @@
-plugins {
-    id "com.android.application"
-    id "kotlin-android"
-    id "dev.flutter.flutter-gradle-plugin"
-}
-
-def localProperties = new Properties()
-def localPropertiesFile = rootProject.file("local.properties")
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.withReader("UTF-8") { reader ->
-        localProperties.load(reader)
-    }
-}
-
-def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
-if (flutterVersionCode == null) {
-    flutterVersionCode = "1"
-}
-
-def flutterVersionName = localProperties.getProperty("flutter.versionName")
-if (flutterVersionName == null) {
-    flutterVersionName = "1.0"
-}
+plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android'; id 'dev.flutter.flutter-gradle-plugin' }
 
 android {
-    namespace "com.v2raystk.v2ray_stk"
-    compileSdk 34
-    ndkVersion flutter.ndkVersion
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
-
+    namespace 'com.v2raystk.app'
+    compileSdk 35
+    ndkVersion '27.0.12077973'
     defaultConfig {
-        applicationId "com.v2raystk.v2ray_stk"
-        minSdk 24
-        targetSdk 34
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
-        multiDexEnabled true
-        // ❌ NO ndk { abiFilters ... }  (conflict with --split-per-abi)
+        applicationId 'com.v2raystk.app'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+        externalNativeBuild { cmake { cppFlags '-std=c++17' } }
     }
-
-    // اگر signing داری، این بلوک را نگه دار/تنظیم کن
-    // buildTypes {
-    //     release {
-    //         signingConfig signingConfigs.debug
-    //     }
-    // }
-
-    buildTypes {
-        release {
-            // موقتاً debug signing برای CI (اگر keystore نداری)
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            shrinkResources false
-        }
-        debug {
-            minifyEnabled false
-        }
-    }
-
-    // اجازه بده Flutter با --split-per-abi خودش splits را مدیریت کند
-    // هیچ splits.abi دستی اضافه نکن مگر خودت کامل کنترلش کنی
-}
-
-flutter {
-    source "../.."
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
+    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.debug } }
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10"
-    implementation "androidx.multidex:multidex:2.0.1"
-
-    // libbox.aar (اگر داخل app/libs هست)
-    implementation(name: "libbox", ext: "aar")
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
 }
+
+flutter { source '../..' }
