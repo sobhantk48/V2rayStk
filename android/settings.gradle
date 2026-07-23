@@ -8,12 +8,6 @@ pluginManagement {
     }()
 
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
 }
 
 plugins {
@@ -22,4 +16,4 @@ plugins {
     id "org.jetbrains.kotlin.android" version "1.9.10" apply false
 }
 
-include ":app"
+include ':app'
