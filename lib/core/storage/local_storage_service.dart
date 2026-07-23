@@ -14,40 +14,51 @@ class LocalStorageService {
   final SharedPreferences _preferences;
 
   static Future<LocalStorageService> create() async {
-    final SharedPreferences preferences =
-        await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
     return LocalStorageService(preferences);
   }
 
-  Future<List<Profile>> loadProfiles() async {
-    final List<String> rawItems = _preferences.getStringList(_profilesKey) ?? <String>[];
-    return rawItems
-        .map((String item) => Profile.fromJson(jsonDecode(item) as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> saveProfiles(List<Profile> profiles) async {
-    final List<String> rawItems = profiles
-        .map((Profile item) => jsonEncode(item.toJson()))
-        .toList();
-    await _preferences.setStringList(_profilesKey, rawItems);
-  }
-
-  Future<List<Subscription>> loadSubscriptions() async {
-    final List<String> rawItems =
-        _preferences.getStringList(_subscriptionsKey) ?? <String>[];
+  Future<List<Map<String, dynamic>>> readJsonList(String key) async {
+    final List<String> rawItems = _preferences.getStringList(key) ?? <String>[];
     return rawItems
         .map(
-          (String item) =>
-              Subscription.fromJson(jsonDecode(item) as Map<String, dynamic>),
+          (String item) => jsonDecode(item) as Map<String, dynamic>,
         )
         .toList();
   }
 
-  Future<void> saveSubscriptions(List<Subscription> subscriptions) async {
-    final List<String> rawItems = subscriptions
-        .map((Subscription item) => jsonEncode(item.toJson()))
+  Future<void> saveJsonList(
+    String key,
+    List<Map<String, dynamic>> items,
+  ) async {
+    final List<String> rawItems = items
+        .map((Map<String, dynamic> item) => jsonEncode(item))
         .toList();
-    await _preferences.setStringList(_subscriptionsKey, rawItems);
+    await _preferences.setStringList(key, rawItems);
+  }
+
+  Future<List<Profile>> loadProfiles() async {
+    final List<Map<String, dynamic>> items = await readJsonList(_profilesKey);
+    return items.map(Profile.fromJson).toList();
+  }
+
+  Future<void> saveProfiles(List<Profile> profiles) async {
+    await saveJsonList(
+      _profilesKey,
+      profiles.map((Profile item) => item.toJson()).toList(),
+    );
+  }
+
+  Future<List<Subscription>> loadSubscriptions() async {
+    final List<Map<String, dynamic>> items =
+        await readJsonList(_subscriptionsKey);
+    return items.map(Subscription.fromJson).toList();
+  }
+
+  Future<void> saveSubscriptions(List<Subscription> subscriptions) async {
+    await saveJsonList(
+      _subscriptionsKey,
+      subscriptions.map((Subscription item) => item.toJson()).toList(),
+    );
   }
 }
