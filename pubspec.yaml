@@ -1,7 +1,8 @@
 name: v2ray_stk
-description: V2ray Stk secure proxy client
-publish_to: none
-version: 1.0.0+1
+description: V2ray Stk Android client built with Flutter and Kotlin.
+publish_to: "none"
+
+version: 0.1.0+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -9,16 +10,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.5.1
-  shared_preferences: ^2.2.3
-  intl: ^0.19.0
+  go_router: ^14.2.0
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.2
+  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/config/
