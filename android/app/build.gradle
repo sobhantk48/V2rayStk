@@ -1,16 +1,34 @@
 plugins {
     id "com.android.application"
-    id "org.jetbrains.kotlin.android"
+    id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader("UTF-8") { reader ->
+        localProperties.load(reader)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
+if (flutterVersionCode == null) {
+    flutterVersionCode = "1"
+}
+
+def flutterVersionName = localProperties.getProperty("flutter.versionName")
+if (flutterVersionName == null) {
+    flutterVersionName = "1.0.0"
+}
+
 android {
-    // پکیج‌آیدی پروژه‌ت رو اگر متفاوته اینجا تغییر بده
-    namespace "com.example.v2ray_stk" 
+    namespace "com.example.v2ray_stk"
     compileSdk 34
+    ndkVersion flutter.ndkVersion
 
     defaultConfig {
-        // پکیج‌آیدی اجرایی رو هم اینجا ست کن
         applicationId "com.example.v2ray_stk"
         minSdk 21
         targetSdk 34
@@ -25,6 +43,12 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
     }
 }
 
