@@ -1,24 +1,41 @@
-plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android'; id 'dev.flutter.flutter-gradle-plugin' }
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
 
 android {
-    namespace 'com.v2raystk.app'
-    compileSdk 35
-    ndkVersion '27.0.12077973'
+    namespace "com.v2ray.stk"
+    compileSdk flutter.compileSdkVersion
+
+    ndkVersion flutter.ndkVersion
+
     defaultConfig {
-        applicationId 'com.v2raystk.app'
-        minSdk 23
-        targetSdk 35
-        versionCode 1
-        versionName '1.0.0'
-        externalNativeBuild { cmake { cppFlags '-std=c++17' } }
+        applicationId "com.v2ray.stk"
+        minSdk flutter.minSdkVersion
+        targetSdk flutter.targetSdkVersion
+        versionCode flutter.versionCode
+        versionName flutter.versionName
     }
-    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
-    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.debug } }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
-dependencies {
-    implementation 'androidx.core:core-ktx:1.13.1'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
+flutter {
+    source "../.."
 }
-
-flutter { source '../..' }
