@@ -25,35 +25,20 @@ jobs:
         with:
           channel: stable
           flutter-version: "3.22.2"
-          cache: true
+          cache: false # موقتاً کش رو خاموش می‌کنیم تا از تمیز بودن مطمئن بشیم
 
       - name: Flutter deps
         run: |
           flutter --version
+          flutter clean
           flutter pub get
 
       - name: Dump Android Gradle files
         run: |
           echo "===== HEAD ====="
           git rev-parse --short HEAD
-          echo "===== files ====="
-          find android -maxdepth 4 -type f | sort
-          echo "===== wrapper ====="
-          cat android/gradle/wrapper/gradle-wrapper.properties
           echo "===== settings.gradle ====="
           cat android/settings.gradle
-          echo "===== root build.gradle ====="
-          cat android/build.gradle
-          echo "===== app/build.gradle ====="
-          cat android/app/build.gradle
-          echo "===== gradle.properties ====="
-          cat android/gradle.properties
-          echo "===== local.properties ====="
-          cat android/local.properties || true
-          echo "===== libbox ====="
-          ls -lh android/app/libs/libbox.aar || echo "MISSING libbox.aar"
-          echo "===== version ====="
-          grep -n "^version:" pubspec.yaml || true
 
       - name: Build APK
         run: |
@@ -68,7 +53,6 @@ jobs:
         with:
           name: release-apks
           path: build/app/outputs/flutter-apk/*.apk
-          if-no-files-found: warn
 
       - name: Upload log on failure
         if: failure()
@@ -76,4 +60,3 @@ jobs:
         with:
           name: flutter-build-log
           path: flutter-build.log
-          if-no-files-found: warn
