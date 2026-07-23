@@ -5,23 +5,17 @@ plugins {
 }
 
 android {
-    namespace "com.v2ray.stk"
+    // پکیج‌آیدی پروژه‌ت رو اگر متفاوته اینجا تغییر بده
+    namespace "com.example.v2ray_stk" 
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.v2ray.stk"
+        // پکیج‌آیدی اجرایی رو هم اینجا ست کن
+        applicationId "com.example.v2ray_stk"
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
-    }
-
-    buildTypes {
-        release {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            shrinkResources false
-        }
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
     }
 
     compileOptions {
