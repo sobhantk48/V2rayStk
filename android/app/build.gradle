@@ -6,16 +6,14 @@ plugins {
 
 android {
     namespace "com.v2ray.stk"
-    compileSdk flutter.compileSdkVersion
-
-    ndkVersion flutter.ndkVersion
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.v2ray.stk"
-        minSdk flutter.minSdkVersion
-        targetSdk flutter.targetSdkVersion
-        versionCode flutter.versionCode
-        versionName flutter.versionName
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
     }
 
     buildTypes {
