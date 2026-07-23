@@ -4,29 +4,21 @@ enum ProfileType {
   trojan,
   shadowsocks,
   socks,
+  http,
   wireguard,
+  hysteria2,
+  tuic,
   unknown,
 }
 
-ProfileType parseProfileType(String value) {
-  switch (value.toLowerCase()) {
-    case 'vmess':
-      return ProfileType.vmess;
-    case 'vless':
-      return ProfileType.vless;
-    case 'trojan':
-      return ProfileType.trojan;
-    case 'shadowsocks':
-      return ProfileType.shadowsocks;
-    case 'socks':
-      return ProfileType.socks;
-    case 'wireguard':
-      return ProfileType.wireguard;
-    default:
-      return ProfileType.unknown;
-  }
-}
+extension ProfileTypeX on ProfileType {
+  static ProfileType fromName(String? value) {
+    for (final ProfileType type in ProfileType.values) {
+      if (type.name == value) {
+        return type;
+      }
+    }
 
-String profileTypeToJson(ProfileType value) {
-  return value.name;
+    return ProfileType.unknown;
+  }
 }

@@ -1,15 +1,4 @@
-enum ProfileType {
-  vmess,
-  vless,
-  trojan,
-  shadowsocks,
-  socks,
-  http,
-  wireguard,
-  hysteria2,
-  tuic,
-  unknown,
-}
+import 'profile_type.dart';
 
 class Profile {
   const Profile({
@@ -69,25 +58,32 @@ class Profile {
 
   factory Profile.fromJson(Map<String, dynamic> json) {
     return Profile(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      type: _profileTypeFromString(json['type'] as String?),
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? 'Unnamed profile',
+      type: ProfileTypeX.fromName(json['type'] as String?),
       rawConfig: json['rawConfig'] as String? ?? '',
       createdAt: json['createdAt'] == null
           ? DateTime.fromMillisecondsSinceEpoch(0)
           : DateTime.parse(json['createdAt'] as String),
       server: json['server'] as String?,
-      port: json['port'] as int?,
+      port: _parsePort(json['port']),
       isActive: json['isActive'] as bool? ?? false,
     );
   }
 
-  static ProfileType _profileTypeFromString(String? value) {
-    for (final ProfileType type in ProfileType.values) {
-      if (type.name == value) {
-        return type;
-      }
+  static int? _parsePort(Object? value) {
+    if (value == null) {
+      return null;
     }
-    return ProfileType.unknown;
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is String) {
+      return int.tryParse(value);
+    }
+
+    return null;
   }
 }
