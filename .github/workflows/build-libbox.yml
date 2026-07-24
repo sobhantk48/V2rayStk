@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       singbox_ref:
-        description: "sing-box git ref (tag/branch)"
+        description: "sing-box tag/branch (خالی = برنچ پیش‌فرض ریپو)"
         required: false
-        default: "main"
+        default: ""
 
 permissions:
   contents: read
@@ -44,8 +44,17 @@ jobs:
 
       - name: Clone sing-box
         run: |
-          git clone --depth 1 --branch "${{ github.event.inputs.singbox_ref }}" \
-            https://github.com/SagerNet/sing-box.git sing-box
+          REF="${{ github.event.inputs.singbox_ref }}"
+          if [ -z "$REF" ]; then
+            echo ">> کلون برنچ پیش‌فرض ریپو"
+            git clone --depth 1 https://github.com/SagerNet/sing-box.git sing-box
+          else
+            echo ">> کلون ref مشخص‌شده: $REF"
+            git clone --depth 1 --branch "$REF" \
+              https://github.com/SagerNet/sing-box.git sing-box
+          fi
+          echo "----- نسخه‌ای که کلون شد -----"
+          git -C sing-box log -1 --oneline
 
       - name: gomobile init
         working-directory: sing-box
