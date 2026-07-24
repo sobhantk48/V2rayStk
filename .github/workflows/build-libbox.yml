@@ -26,7 +26,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.24"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -56,9 +56,10 @@ jobs:
           echo "----- نسخه‌ای که کلون شد -----"
           git -C sing-box log -1 --oneline
 
-      - name: Add x/mobile dependency
+      - name: Add gomobile tool directive
         working-directory: sing-box
         run: |
+          go get -tool golang.org/x/mobile/cmd/gobind
           go get golang.org/x/mobile/bind@latest
           go mod tidy
 
