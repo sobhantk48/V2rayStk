@@ -56,6 +56,12 @@ jobs:
           echo "----- نسخه‌ای که کلون شد -----"
           git -C sing-box log -1 --oneline
 
+      - name: Add x/mobile dependency
+        working-directory: sing-box
+        run: |
+          go get golang.org/x/mobile/bind@latest
+          go mod tidy
+
       - name: gomobile init
         working-directory: sing-box
         run: gomobile init
