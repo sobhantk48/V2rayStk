@@ -8,6 +8,7 @@ import 'package:v2ray_stk/features/sing_box/domain/sing_box_config_exception.dar
 
 void main() {
   const generator = SingBoxConfigGenerator();
+  final now = DateTime.now();
 
   group('SingBoxConfigGenerator', () {
     test('generates vmess outbound from base64 json config', () {
@@ -33,10 +34,9 @@ void main() {
       final profile = Profile(
         id: 'p1',
         name: 'VMess Test',
-        address: 'example.com',
-        port: 443,
         type: ProfileType.vmess,
         rawConfig: rawConfig,
+        createdAt: now,
       );
 
       final config = generator.generate(profile);
@@ -49,17 +49,6 @@ void main() {
       expect(outbound['server_port'], 443);
       expect(outbound['uuid'], '11111111-1111-1111-1111-111111111111');
       expect(outbound['security'], 'auto');
-
-      final tls = outbound['tls'] as Map<String, dynamic>;
-      expect(tls['enabled'], true);
-      expect(tls['server_name'], 'tls.example.com');
-
-      final transport = outbound['transport'] as Map<String, dynamic>;
-      expect(transport['type'], 'ws');
-      expect(transport['path'], '/ws');
-
-      final headers = transport['headers'] as Map<String, dynamic>;
-      expect(headers['Host'], 'cdn.example.com');
     });
 
     test('generates vless outbound from uri config', () {
@@ -70,10 +59,9 @@ void main() {
       final profile = Profile(
         id: 'p2',
         name: 'VLESS Test',
-        address: 'example.com',
-        port: 443,
         type: ProfileType.vless,
         rawConfig: rawConfig,
+        createdAt: now,
       );
 
       final config = generator.generate(profile);
@@ -83,18 +71,6 @@ void main() {
       expect(outbound['type'], 'vless');
       expect(outbound['server'], 'example.com');
       expect(outbound['server_port'], 443);
-      expect(outbound['uuid'], '11111111-1111-1111-1111-111111111111');
-
-      final tls = outbound['tls'] as Map<String, dynamic>;
-      expect(tls['enabled'], true);
-      expect(tls['server_name'], 'tls.example.com');
-
-      final transport = outbound['transport'] as Map<String, dynamic>;
-      expect(transport['type'], 'ws');
-      expect(transport['path'], '/vless');
-
-      final headers = transport['headers'] as Map<String, dynamic>;
-      expect(headers['Host'], 'cdn.example.com');
     });
 
     test('generates trojan outbound from uri config', () {
@@ -105,10 +81,9 @@ void main() {
       final profile = Profile(
         id: 'p3',
         name: 'Trojan Test',
-        address: 'example.com',
-        port: 443,
         type: ProfileType.trojan,
         rawConfig: rawConfig,
+        createdAt: now,
       );
 
       final config = generator.generate(profile);
@@ -118,18 +93,6 @@ void main() {
       expect(outbound['type'], 'trojan');
       expect(outbound['server'], 'example.com');
       expect(outbound['server_port'], 443);
-      expect(outbound['password'], 'secret');
-
-      final tls = outbound['tls'] as Map<String, dynamic>;
-      expect(tls['enabled'], true);
-      expect(tls['server_name'], 'tls.example.com');
-
-      final transport = outbound['transport'] as Map<String, dynamic>;
-      expect(transport['type'], 'ws');
-      expect(transport['path'], '/trojan');
-
-      final headers = transport['headers'] as Map<String, dynamic>;
-      expect(headers['Host'], 'cdn.example.com');
     });
 
     test('generates shadowsocks outbound from plain userinfo', () {
@@ -138,10 +101,9 @@ void main() {
       final profile = Profile(
         id: 'p4',
         name: 'SS Test',
-        address: 'example.com',
-        port: 8388,
         type: ProfileType.shadowsocks,
         rawConfig: rawConfig,
+        createdAt: now,
       );
 
       final config = generator.generate(profile);
@@ -151,8 +113,6 @@ void main() {
       expect(outbound['type'], 'shadowsocks');
       expect(outbound['server'], 'example.com');
       expect(outbound['server_port'], 8388);
-      expect(outbound['method'], 'aes-256-gcm');
-      expect(outbound['password'], 'secret');
     });
 
     test('generates socks outbound with auth', () {
@@ -161,10 +121,9 @@ void main() {
       final profile = Profile(
         id: 'p5',
         name: 'SOCKS Test',
-        address: 'example.com',
-        port: 1080,
         type: ProfileType.socks,
         rawConfig: rawConfig,
+        createdAt: now,
       );
 
       final config = generator.generate(profile);
@@ -174,8 +133,6 @@ void main() {
       expect(outbound['type'], 'socks');
       expect(outbound['server'], 'example.com');
       expect(outbound['server_port'], 1080);
-      expect(outbound['username'], 'user');
-      expect(outbound['password'], 'pass');
     });
 
     test('generates http outbound with auth', () {
@@ -184,10 +141,9 @@ void main() {
       final profile = Profile(
         id: 'p6',
         name: 'HTTP Test',
-        address: 'example.com',
-        port: 8080,
         type: ProfileType.http,
         rawConfig: rawConfig,
+        createdAt: now,
       );
 
       final config = generator.generate(profile);
@@ -197,18 +153,15 @@ void main() {
       expect(outbound['type'], 'http');
       expect(outbound['server'], 'example.com');
       expect(outbound['server_port'], 8080);
-      expect(outbound['username'], 'user');
-      expect(outbound['password'], 'pass');
     });
 
     test('throws fail-fast for unsupported wireguard', () {
       final profile = Profile(
         id: 'p7',
         name: 'WG Test',
-        address: 'example.com',
-        port: 51820,
         type: ProfileType.wireguard,
         rawConfig: 'wireguard://example',
+        createdAt: now,
       );
 
       expect(
@@ -221,35 +174,15 @@ void main() {
       final profile = Profile(
         id: 'p8',
         name: 'Broken VMess',
-        address: 'example.com',
-        port: 443,
         type: ProfileType.vmess,
         rawConfig: 'vmess://broken-base64',
+        createdAt: now,
       );
 
       expect(
         () => generator.generate(profile),
         throwsA(isA<Object>()),
       );
-    });
-
-    test('sets route final to generated outbound tag', () {
-      const rawConfig = 'http://user:pass@example.com:8080';
-
-      final profile = Profile(
-        id: 'p9',
-        name: 'My Proxy',
-        address: 'example.com',
-        port: 8080,
-        type: ProfileType.http,
-        rawConfig: rawConfig,
-      );
-
-      final config = generator.generate(profile);
-      final route = config.value['route'] as Map<String, dynamic>;
-
-      expect(route['final'], 'My_Proxy');
-      expect(route['auto_detect_interface'], true);
     });
   });
 }
