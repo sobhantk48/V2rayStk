@@ -2,75 +2,90 @@ name: Build libbox.aar
 
 on:
   workflow_dispatch:
-    inputs:
-      singbox_ref:
-        description: "sing-box tag/branch (خالی = default branch)"
-        required: false
-        default: ""
+  push:
+    paths:
+      - '.github/workflows/build-libbox.yml'
 
 jobs:
   build-libbox:
     runs-on: ubuntu-latest
+    env:
+      # نسخه‌ی sing-box که ازش libbox می‌سازیم
+      SING_BOX_REF: v1.10.7
+      # تگ‌های ساخت — بدون cronet تا از ارورهای لینک جلوگیری بشه
+      BUILD_TAGS: with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api
+
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Clone sing-box
-        run: |
-          if [ -n "${{ github.event.inputs.singbox_ref }}" ]; then
-            git clone --depth 1 --branch "${{ github.event.inputs.singbox_ref }}" \
-              https://github.com/SagerNet/sing-box.git sing-box
-          else
-            git clone --depth 1 https://github.com/SagerNet/sing-box.git sing-box
-          fi
-
-      - name: Setup Go (from sing-box go.mod)
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: sing-box/go.mod
-          cache: false
-
-      - name: Setup JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - name: Setup Android NDK (pinned)
-        id: ndk
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          # این نسخه با sagernet/gomobile v0.1.4 سازگاره
+          go-version: '1.23.4'
+          check-latest: false
+
+      - name: Setup Android NDK r25c
+        id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r25c
+          add-to-path: false
 
-      - name: Install SagerNet gomobile fork
-        working-directory: sing-box
+      - name: Checkout sing-box source
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: ${{ env.SING_BOX_REF }}
+          path: sing-box
+
+      - name: Install SagerNet gomobile toolchain
         run: |
-          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.4
-          go install github.com/sagernet/gomobile/cmd/gobind@v0.1.4
+          # نصب gomobile و gobind با همون نسخه‌ی Go فعلی
+          # این هماهنگی، ارور invalid reference to os.checkPidfdOnce رو حل می‌کنه
+          go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.4
+          go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.4
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: gomobile init
+      - name: Prepare sing-box module dependencies
         working-directory: sing-box
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-        run: gomobile init
+        run: |
+          # مطمئن می‌شیم x/mobile توی گراف وابستگی‌ها هست
+          go get golang.org/x/mobile/bind
+          go mod tidy
 
-      - name: Build libbox.aar (without cronet)
+      - name: Build libbox.aar
         working-directory: sing-box
         env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           gomobile bind -v \
             -target=android \
             -androidapi 21 \
-            -tags "with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api" \
+            -javapkg=io.nekohasekai \
+            -libname=box \
+            -tags "${BUILD_TAGS}" \
             -trimpath -ldflags "-s -w" \
             -o libbox.aar \
             ./experimental/libbox
 
-      - name: Upload libbox.aar
+      - name: Move AAR into app libs
+        run: |
+          mkdir -p android/app/libs
+          mv sing-box/libbox.aar android/app/libs/libbox.aar
+          ls -lh android/app/libs/
+
+      - name: Upload libbox.aar artifact
         uses: actions/upload-artifact@v4
         with:
           name: libbox-aar
-          path: sing-box/libbox.aar
+          path: android/app/libs/libbox.aar
           if-no-files-found: error
