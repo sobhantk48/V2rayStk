@@ -4,52 +4,43 @@ on:
   workflow_dispatch:
     inputs:
       singbox_ref:
-        description: "sing-box tag/branch (خالی = برنچ پیش‌فرض ریپو)"
+        description: "sing-box tag/branch (خالی = default branch)"
         required: false
         default: ""
-
-permissions:
-  contents: read
 
 jobs:
   build-libbox:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Java 17
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Clone sing-box
+        run: |
+          if [ -n "${{ github.event.inputs.singbox_ref }}" ]; then
+            git clone --depth 1 --branch "${{ github.event.inputs.singbox_ref }}" \
+              https://github.com/SagerNet/sing-box.git sing-box
+          else
+            git clone --depth 1 https://github.com/SagerNet/sing-box.git sing-box
+          fi
+
+      - name: Setup Go (from sing-box go.mod)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: sing-box/go.mod
+          cache: false
+
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install NDK
-        run: |
-          sdkmanager "ndk;27.0.12077973"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
-
-      - name: Clone sing-box
-        run: |
-          REF="${{ github.event.inputs.singbox_ref }}"
-          if [ -z "$REF" ]; then
-            echo ">> کلون برنچ پیش‌فرض ریپو"
-            git clone --depth 1 https://github.com/SagerNet/sing-box.git sing-box
-          else
-            echo ">> کلون ref مشخص‌شده: $REF"
-            git clone --depth 1 --branch "$REF" \
-              https://github.com/SagerNet/sing-box.git sing-box
-          fi
-          echo "----- نسخه‌ای که کلون شد -----"
-          git -C sing-box log -1 --oneline
-          echo "----- Go موردنیاز طبق go.mod -----"
-          grep -E "^go " sing-box/go.mod
-
-      - name: Setup Go (matching go.mod)
-        uses: actions/setup-go@v5
+      - name: Setup Android NDK (pinned)
+        id: ndk
+        uses: nttld/setup-ndk@v1
         with:
-          go-version-file: sing-box/go.mod
+          ndk-version: r25c
 
       - name: Install SagerNet gomobile fork
         working-directory: sing-box
@@ -58,21 +49,28 @@ jobs:
           go install github.com/sagernet/gomobile/cmd/gobind@v0.1.4
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Build libbox.aar (official path)
+      - name: gomobile init
         working-directory: sing-box
-        run: |
-          export PATH="$(go env GOPATH)/bin:$PATH"
-          go run ./cmd/internal/build_libbox -target android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: gomobile init
 
-      - name: Locate produced AAR
+      - name: Build libbox.aar (without cronet)
         working-directory: sing-box
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
-          echo "----- جست‌وجوی libbox.aar -----"
-          find . -name "libbox.aar" -exec ls -lh {} \;
+          gomobile bind -v \
+            -target=android \
+            -androidapi 21 \
+            -tags "with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api" \
+            -trimpath -ldflags "-s -w" \
+            -o libbox.aar \
+            ./experimental/libbox
 
-      - name: Upload artifact
+      - name: Upload libbox.aar
         uses: actions/upload-artifact@v4
         with:
           name: libbox-aar
-          path: sing-box/**/libbox.aar
-          retention-days: 30
+          path: sing-box/libbox.aar
+          if-no-files-found: error
