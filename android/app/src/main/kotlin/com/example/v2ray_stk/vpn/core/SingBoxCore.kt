@@ -1,16 +1,16 @@
 package com.example.v2ray_stk.vpn.core
 
 import android.util.Log
-import libbox.BoxService
-import libbox.Libbox
-import libbox.PlatformInterface
+import io.nekohasekai.libbox.BoxService
+import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.PlatformInterface
 
 /**
- * پیاده‌سازی هسته‌ی sing-box بر پایه‌ی libbox.aar
+ * پیاده‌سازی هسته‌ی sing-box روی libbox.
  *
- * این کلاس مستقل از VpnService است و فقط چرخه‌ی حیات BoxService را مدیریت می‌کند.
- * ارتباط با سیستم‌عامل (ساخت TUN و ...) از طریق PlatformInterface تزریق می‌شود
- * که توسط V2rayVpnService پیاده‌سازی شده است.
+ * نکته: فایل‌دیسکریپتور TUN به‌طور مستقیم به libbox پاس نمی‌شود؛
+ * libbox خودش از طریق [PlatformInterface.openTun] آن را درخواست می‌کند.
+ * پس fd را فقط نگه می‌داریم و در دسترس سرویس قرار می‌دهیم.
  */
 class SingBoxCore(
     private val platformInterface: PlatformInterface,
@@ -20,35 +20,64 @@ class SingBoxCore(
 
     private var boxService: BoxService? = null
 
-    override fun start(config: String) {
+    /** آخرین fd ای که سرویس VPN تحویل داده است. */
+    @Volatile
+    var pendingTunFd: Int = -1
+        private set
+
+    override val isRunning: Boolean
+        get() = boxService != null
+
+    override fun start(configJson: String, tunFd: Int) {
         if (boxService != null) {
             Log.w(TAG, "core already running, ignoring start()")
             return
         }
-        // اعتبارسنجی کانفیگ قبل از اجرا؛ اگر خراب باشد Exception پرتاب می‌شود.
-        Libbox.checkConfig(config)
 
-        val service = Libbox.newService(config, platformInterface)
-        service.start()
-        boxService = service
-        Log.i(TAG, "sing-box started (version=${Libbox.version()})")
+        pendingTunFd = tunFd
+
+        try {
+            Libbox.checkConfig(configJson)
+
+            val service = Libbox.newService(configJson, platformInterface)
+            service.start()
+            boxService = service
+
+            Log.i(TAG, "sing-box started (version=${Libbox.version()}, fd=$tunFd)")
+        } catch (e: Exception) {
+            pendingTunFd = -1
+            boxService = null
+            throw VpnCoreException("راه‌اندازی هسته‌ی sing-box شکست خورد", e)
+        }
     }
 
     override fun stop() {
-        boxService?.let {
+        boxService?.let { service ->
             try {
-                it.close()
+                service.close()
             } catch (e: Exception) {
                 Log.e(TAG, "error while closing box service", e)
             }
         }
         boxService = null
+        pendingTunFd = -1
         Log.i(TAG, "sing-box stopped")
     }
 
-    override fun isRunning(): Boolean = boxService != null
+    /**
+     * تست تأخیر. فعلاً پیاده‌سازی واقعی urltest به libbox وصل نشده،
+     * پس -1 برمی‌گرداند تا [CoreSelector] این هسته را از رتبه‌بندی خارج کند.
+     */
+    override fun testLatency(configJson: String): Long {
+        return try {
+            Libbox.checkConfig(configJson)
+            -1L
+        } catch (e: Exception) {
+            Log.w(TAG, "testLatency: invalid config", e)
+            -1L
+        }
+    }
 
-    /** برای مدیریت وضعیت شبکه هنگام sleep/wake دستگاه. */
     fun pause() = boxService?.pause()
 
     fun wake() = boxService?.wake()
@@ -57,7 +86,7 @@ class SingBoxCore(
 
     fun needWIFIState(): Boolean = boxService?.needWIFIState() ?: false
 
-    companion object {
-        private const val TAG = "SingBoxCore"
+    private companion object {
+        const val TAG = "SingBoxCore"
     }
 }
