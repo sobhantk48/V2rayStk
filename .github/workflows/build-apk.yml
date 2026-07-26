@@ -11,17 +11,19 @@ env:
   BUILD_TAGS: with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api
   GO_VERSION: "1.23.4"
   FLUTTER_VERSION: "3.35.5"
+  NDK_VERSION: r27c
 
 jobs:
   libbox:
     name: Build libbox.aar
     runs-on: ubuntu-latest
-    outputs:
-      cache-key: ${{ steps.meta.outputs.key }}
     steps:
       - name: Compute cache key
         id: meta
-        run: echo "key=libbox-${SING_BOX_REF}-${BUILD_TAGS}-ndk27" >> "$GITHUB_OUTPUT"
+        run: |
+          # کاما در کلید کش مجاز نیست -> تبدیل به خط تیره
+          TAGS_SLUG="$(echo "${BUILD_TAGS}" | tr ',' '-')"
+          echo "key=libbox-${SING_BOX_REF}-${NDK_VERSION}-${TAGS_SLUG}" >> "$GITHUB_OUTPUT"
 
       - name: Restore cached AAR
         id: cache
@@ -58,7 +60,7 @@ jobs:
         id: ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r27c
+          ndk-version: ${{ env.NDK_VERSION }}
           add-to-path: false
 
       - name: Install gomobile
@@ -89,6 +91,9 @@ jobs:
             ./experimental/libbox
           mkdir -p ../libbox-out
           mv libbox.aar ../libbox-out/libbox.aar
+
+      - name: Show AAR info
+        run: ls -lh libbox-out
 
       - name: Upload AAR
         uses: actions/upload-artifact@v4
