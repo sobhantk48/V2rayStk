@@ -8,7 +8,7 @@ ThemeData buildAppTheme() {
     colorScheme: ColorScheme.fromSeed(seedColor: seed),
     scaffoldBackgroundColor: const Color(0xFFF7F9FC),
     appBarTheme: const AppBarTheme(centerTitle: true),
-    cardTheme: const CardTheme(
+    cardTheme: const CardThemeData(
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
