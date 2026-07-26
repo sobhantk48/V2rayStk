@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    namespace "com.example.v2ray_stk"
-    compileSdk 34
-    ndkVersion flutter.ndkVersion
+    namespace = "com.example.v2ray_stk"
+    compileSdk = 35
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
@@ -19,37 +19,36 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.v2ray_stk"
-        minSdk 24
-        targetSdk 34
-        versionCode flutter.versionCode
-        versionName flutter.versionName
-
-        ndk {
-            abiFilters "arm64-v8a", "armeabi-v7a"
-        }
+        applicationId = "com.example.v2ray_stk"
+        minSdk = 24
+        targetSdk = 35
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            shrinkResources false
+            signingConfig = signingConfigs.debug
+            minifyEnabled = false
+            shrinkResources = false
         }
     }
 
-    packagingOptions {
+    packaging {
         jniLibs {
-            useLegacyPackaging false
+            useLegacyPackaging = false
+        }
+        resources {
+            excludes += ["META-INF/*.kotlin_module"]
         }
     }
 }
 
 flutter {
-    source "../.."
+    source = "../.."
 }
 
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.aar"])
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
 }
