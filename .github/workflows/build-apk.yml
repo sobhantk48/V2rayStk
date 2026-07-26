@@ -144,11 +144,17 @@ jobs:
         run: flutter test || true
 
       - name: Build release APKs
-        run: flutter build apk --release --split-per-abi
+        run: |
+          flutter build apk --release \
+            --split-per-abi \
+            --target-platform android-arm,android-arm64
+
+      - name: List outputs
+        run: ls -lh build/app/outputs/flutter-apk
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
           name: V2rayStk-release-apks
-          path: build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/*-release.apk
           if-no-files-found: error
