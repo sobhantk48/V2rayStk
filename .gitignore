@@ -71,3 +71,6 @@ coverage/
 # Sing-box / native
 !**/android/app/libs/.gitkeep
 *.so
+
+# libbox (در CI ساخته می‌شود)
+android/app/libs/*.aar
