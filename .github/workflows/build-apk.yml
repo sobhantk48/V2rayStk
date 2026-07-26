@@ -9,6 +9,7 @@ on:
 env:
   SING_BOX_REF: v1.10.7
   BUILD_TAGS: with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api
+  GOMOBILE_VERSION: v0.1.4
   GO_VERSION: "1.23.4"
   FLUTTER_VERSION: "3.35.5"
   NDK_VERSION: r27c
@@ -21,9 +22,8 @@ jobs:
       - name: Compute cache key
         id: meta
         run: |
-          # کاما در کلید کش مجاز نیست -> تبدیل به خط تیره
           TAGS_SLUG="$(echo "${BUILD_TAGS}" | tr ',' '-')"
-          echo "key=libbox-${SING_BOX_REF}-${NDK_VERSION}-${TAGS_SLUG}" >> "$GITHUB_OUTPUT"
+          echo "key=libbox-${SING_BOX_REF}-${NDK_VERSION}-${GOMOBILE_VERSION}-${TAGS_SLUG}" >> "$GITHUB_OUTPUT"
 
       - name: Restore cached AAR
         id: cache
@@ -63,12 +63,12 @@ jobs:
           ndk-version: ${{ env.NDK_VERSION }}
           add-to-path: false
 
-      - name: Install gomobile
+      - name: Install sagernet gomobile
         if: steps.cache.outputs.cache-hit != 'true'
-        working-directory: sing-box
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          set -e
+          go install -v github.com/sagernet/gomobile/cmd/gomobile@${GOMOBILE_VERSION}
+          go install -v github.com/sagernet/gomobile/cmd/gobind@${GOMOBILE_VERSION}
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: gomobile bind
@@ -82,11 +82,11 @@ jobs:
           gomobile init
           gomobile bind -v \
             -target=android/arm64,android/arm \
-            -androidapi 24 \
+            -androidapi 21 \
             -javapkg=io.nekohasekai \
             -libname=box \
             -tags "${BUILD_TAGS}" \
-            -trimpath -ldflags "-s -w" \
+            -trimpath -ldflags "-s -w -buildid=" \
             -o libbox.aar \
             ./experimental/libbox
           mkdir -p ../libbox-out
