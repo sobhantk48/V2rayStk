@@ -13,8 +13,16 @@ class VpnPlatformService {
     return result ?? 'disconnected';
   }
 
-  Future<void> connect() async {
-    await _channel.invokeMethod<void>('connect');
+  /// کانفیگ JSON هسته sing-box را به سرویس نیتیو می‌فرستد.
+  /// کلید `config` باید با `call.argument<String>("config")` در
+  /// MainActivity.kt یکسان بماند.
+  Future<void> connect(String config) async {
+    await _channel.invokeMethod<void>(
+      'connect',
+      <String, dynamic>{
+        'config': config,
+      },
+    );
   }
 
   Future<void> disconnect() async {

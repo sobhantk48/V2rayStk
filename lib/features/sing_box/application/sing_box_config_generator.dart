@@ -8,27 +8,55 @@ import '../domain/sing_box_config_exception.dart';
 class SingBoxConfigGenerator {
   const SingBoxConfigGenerator();
 
+  /// این مقادیر باید با establishTun در V2rayVpnService.kt یکسان بمانند.
+  static const int tunMtu = 9000;
+  static const String tunAddress = '172.19.0.1/30';
+  static const String tunInterfaceName = 'tun0';
+  static const String dnsServerAddress = '8.8.8.8';
+
   SingBoxConfig generate(Profile profile) {
     final Map<String, dynamic> outbound = _buildOutbound(profile);
+    final String proxyTag = outbound['tag'] as String;
 
     return SingBoxConfig(
       <String, dynamic>{
         'log': <String, dynamic>{
           'level': 'info',
+          'timestamp': true,
         },
         'dns': <String, dynamic>{
           'servers': <Map<String, dynamic>>[
             <String, dynamic>{
-              'tag': 'google',
-              'address': '8.8.8.8',
+              'tag': 'dns-remote',
+              'address': dnsServerAddress,
               'strategy': 'ipv4_only',
+              'detour': proxyTag,
+            },
+            <String, dynamic>{
+              'tag': 'dns-direct',
+              'address': dnsServerAddress,
+              'strategy': 'ipv4_only',
+              'detour': 'direct',
             },
           ],
+          'final': 'dns-remote',
+          'strategy': 'ipv4_only',
+          'independent_cache': true,
         },
         'inbounds': <Map<String, dynamic>>[
           <String, dynamic>{
-            'type': 'direct',
-            'tag': 'direct-in',
+            'type': 'tun',
+            'tag': 'tun-in',
+            'interface_name': tunInterfaceName,
+            'mtu': tunMtu,
+            'address': <String>[tunAddress],
+            // مسیر و آدرس توسط VpnService.Builder ساخته می‌شود،
+            // پس هسته نباید خودش route اضافه کند.
+            'auto_route': false,
+            'strict_route': false,
+            'stack': 'gvisor',
+            'sniff': true,
+            'sniff_override_destination': false,
           },
         ],
         'outbounds': <Map<String, dynamic>>[
@@ -41,10 +69,40 @@ class SingBoxConfigGenerator {
             'type': 'block',
             'tag': 'block',
           },
+          <String, dynamic>{
+            'type': 'dns',
+            'tag': 'dns-out',
+          },
         ],
         'route': <String, dynamic>{
-          'final': outbound['tag'],
+          'rules': <Map<String, dynamic>>[
+            // پرس‌وجوهای DNS داخل tun باید به outbound نوع dns برود،
+            // وگرنه resolve انجام نمی‌شود.
+            <String, dynamic>{
+              'protocol': 'dns',
+              'outbound': 'dns-out',
+            },
+            <String, dynamic>{
+              'port': <int>[53],
+              'outbound': 'dns-out',
+            },
+            // ترافیک شبکه‌های محلی از تونل خارج می‌شود.
+            <String, dynamic>{
+              'ip_is_private': true,
+              'outbound': 'direct',
+            },
+          ],
+          'final': proxyTag,
           'auto_detect_interface': true,
+        },
+        'experimental': <String, dynamic>{
+          'cache_file': <String, dynamic>{
+            'enabled': true,
+          },
+          // آمار لحظه‌ای برای CommandClient در سمت اندروید.
+          'clash_api': <String, dynamic>{
+            'external_controller': '127.0.0.1:9090',
+          },
         },
       },
     );
@@ -77,7 +135,8 @@ class SingBoxConfigGenerator {
   Map<String, dynamic> _buildVmessOutbound(Profile profile) {
     final Map<String, dynamic> json = _decodeVmessJson(profile.rawConfig);
 
-    final String server = (json['add'] as String? ?? profile.server ?? '').trim();
+    final String server =
+        (json['add'] as String? ?? profile.server ?? '').trim();
     final int serverPort =
         int.tryParse(json['port']?.toString() ?? '') ?? (profile.port ?? 0);
     final String uuid = (json['id'] as String? ?? '').trim();
@@ -177,7 +236,8 @@ class SingBoxConfigGenerator {
     final String host = (uri.queryParameters['host'] ?? '').trim();
     final String path = (uri.queryParameters['path'] ?? '').trim();
     final String sni = (uri.queryParameters['sni'] ?? '').trim();
-    final String security = (uri.queryParameters['security'] ?? 'tls').trim();
+    final String security =
+        (uri.queryParameters['security'] ?? 'tls').trim();
 
     _require(uri.host.isNotEmpty, 'Trojan server is missing.');
     _require(uri.port > 0, 'Trojan port is invalid.');
@@ -302,7 +362,8 @@ class SingBoxConfigGenerator {
   }
 
   String _safeTag(Profile profile) {
-    final String base = profile.name.trim().isEmpty ? profile.id : profile.name;
+    final String base =
+        profile.name.trim().isEmpty ? profile.id : profile.name;
     return base.replaceAll(RegExp(r'\s+'), '_');
   }
 
