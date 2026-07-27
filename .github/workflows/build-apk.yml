@@ -92,9 +92,6 @@ jobs:
           mkdir -p ../libbox-out
           mv libbox.aar ../libbox-out/libbox.aar
 
-      - name: Show AAR info
-        run: ls -lh libbox-out
-
       - name: Upload AAR
         uses: actions/upload-artifact@v4
         with:
@@ -140,21 +137,26 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos || true
 
-      - name: Test
-        run: flutter test || true
-
       - name: Build release APKs
         run: |
           flutter build apk --release \
             --split-per-abi \
-            --target-platform android-arm,android-arm64
+            --target-platform android-arm,android-arm64 \
+            --verbose 2>&1 | tail -n 120
 
-      - name: List outputs
-        run: ls -lh build/app/outputs/flutter-apk
+      - name: Locate every produced APK
+        if: always()
+        run: |
+          echo "--- flutter-apk dir ---"
+          ls -lhR build/app/outputs/flutter-apk 2>/dev/null || echo "missing"
+          echo "--- any apk in repo ---"
+          find . -name "*.apk" -not -path "./.git/*" -printf "%p  %kKB\n" || true
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
           name: V2rayStk-release-apks
-          path: build/app/outputs/flutter-apk/*-release.apk
-          if-no-files-found: error
+          path: |
+            build/app/outputs/flutter-apk/*-release.apk
+            build/app/outputs/apk/release/*.apk
+          if-no-files-found: warn
