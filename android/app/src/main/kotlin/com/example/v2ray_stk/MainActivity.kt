@@ -9,6 +9,7 @@ import androidx.annotation.NonNull
 import com.example.v2ray_stk.vpn.CommandClientBridge
 import com.example.v2ray_stk.vpn.LogStore
 import com.example.v2ray_stk.vpn.SingBoxBridge
+import com.example.v2ray_stk.vpn.LogChannel
 import com.example.v2ray_stk.vpn.V2rayVpnService
 import com.example.v2ray_stk.vpn.VpnState
 import com.example.v2ray_stk.vpn.VpnStatus
@@ -32,6 +33,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        LogChannel.register(flutterEngine)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
