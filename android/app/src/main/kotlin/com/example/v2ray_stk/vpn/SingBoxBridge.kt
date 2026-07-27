@@ -30,13 +30,28 @@ object SingBoxBridge {
         ensureSetup(vpnService.applicationContext)
 
         val platform = BoxPlatformInterface(
+            context = vpnService.applicationContext,
             tunFdProvider = { currentTunFd },
             protectFd = { fd -> runCatching { vpnService.protect(fd) }.getOrDefault(false) },
         )
 
         Log.d(TAG, "creating service, config length=${config.length}")
-        val service = Libbox.newService(config, platform)
-        service.start()
+        val service = try {
+            Libbox.newService(config, platform)
+        } catch (e: Throwable) {
+            Log.e(TAG, "newService failed", e)
+            throw e
+        }
+
+        Log.d(TAG, "service created, starting...")
+        try {
+            service.start()
+        } catch (e: Throwable) {
+            Log.e(TAG, "service.start failed", e)
+            runCatching { service.close() }
+            throw e
+        }
+
         boxService = service
         Log.d(TAG, "sing-box started")
     }
