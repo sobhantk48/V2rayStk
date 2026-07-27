@@ -125,6 +125,15 @@ class SingBoxConfigGenerator {
     ];
   }
 
+  /// QUIC (UDP/443) را مسدود می‌کند تا گوگل/یوتیوب به TCP برگردند.
+  Map<String, dynamic> _blockQuicRule() {
+    return <String, dynamic>{
+      'network': 'udp',
+      'port': <int>[443],
+      'outbound': 'block',
+    };
+  }
+
   Map<String, dynamic> _experimental(Map<String, dynamic>? existing) {
     final Map<String, dynamic> result = existing == null
         ? <String, dynamic>{}
@@ -237,6 +246,7 @@ class SingBoxConfigGenerator {
 
     final List<Map<String, dynamic>> rules = <Map<String, dynamic>>[
       ..._dnsRules(dnsTag),
+      _blockQuicRule(),
       ...sourceRules,
       if (sourceRules.isEmpty)
         <String, dynamic>{'ip_is_private': true, 'outbound': 'direct'},
@@ -584,6 +594,7 @@ class SingBoxConfigGenerator {
   List<Map<String, dynamic>> _baseRouteRules(String dnsTag) {
     return <Map<String, dynamic>>[
       ..._dnsRules(dnsTag),
+      _blockQuicRule(),
       <String, dynamic>{
         'network': 'udp',
         'port': <int>[443],
