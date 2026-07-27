@@ -34,8 +34,8 @@ class ProfilesNotifier extends AsyncNotifier<List<Profile>> {
   }
 
   Future<void> reload() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
+    state = const AsyncLoading<List<Profile>>();
+    state = await AsyncValue.guard<List<Profile>>(() async {
       final ProfileRepository repository = await _repository;
       return repository.getProfiles();
     });
@@ -47,9 +47,31 @@ class ProfilesNotifier extends AsyncNotifier<List<Profile>> {
     await reload();
   }
 
+  /// واردات انبوه: چند کانفیگ در یک عملیات ذخیره می‌شود.
+  Future<void> addProfiles(List<Profile> profiles) async {
+    if (profiles.isEmpty) {
+      return;
+    }
+    final ProfileRepository repository = await _repository;
+    await repository.addProfiles(profiles);
+    await reload();
+  }
+
+  Future<void> updateProfile(Profile profile) async {
+    final ProfileRepository repository = await _repository;
+    await repository.updateProfile(profile);
+    await reload();
+  }
+
   Future<void> deleteProfile(String profileId) async {
     final ProfileRepository repository = await _repository;
     await repository.deleteProfile(profileId);
+    await reload();
+  }
+
+  Future<void> deleteAll() async {
+    final ProfileRepository repository = await _repository;
+    await repository.deleteAll();
     await reload();
   }
 
@@ -57,5 +79,19 @@ class ProfilesNotifier extends AsyncNotifier<List<Profile>> {
     final ProfileRepository repository = await _repository;
     await repository.activateProfile(profileId);
     await reload();
+  }
+
+  /// پروفایل فعال فعلی؛ اگر هیچ‌کدام فعال نباشد، اولین مورد.
+  Profile? get activeProfile {
+    final List<Profile>? profiles = state.value;
+    if (profiles == null || profiles.isEmpty) {
+      return null;
+    }
+    for (final Profile profile in profiles) {
+      if (profile.isActive) {
+        return profile;
+      }
+    }
+    return profiles.first;
   }
 }

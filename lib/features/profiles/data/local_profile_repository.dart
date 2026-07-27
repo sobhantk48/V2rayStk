@@ -17,11 +17,7 @@ class LocalProfileRepository implements ProfileRepository {
     return items.map(Profile.fromJson).toList();
   }
 
-  @override
-  Future<void> addProfile(Profile profile) async {
-    final List<Profile> profiles = await getProfiles();
-    profiles.add(profile);
-
+  Future<void> _persist(List<Profile> profiles) async {
     await _storage.saveJsonList(
       _profilesKey,
       profiles.map((Profile item) => item.toJson()).toList(),
@@ -29,31 +25,59 @@ class LocalProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<void> addProfile(Profile profile) async {
+    final List<Profile> profiles = await getProfiles();
+    profiles.add(profile);
+    await _persist(profiles);
+  }
+
+  @override
+  Future<void> addProfiles(List<Profile> newProfiles) async {
+    if (newProfiles.isEmpty) {
+      return;
+    }
+
+    final List<Profile> profiles = await getProfiles();
+    profiles.addAll(newProfiles);
+    await _persist(profiles);
+  }
+
+  @override
+  Future<void> updateProfile(Profile profile) async {
+    final List<Profile> profiles = await getProfiles();
+
+    await _persist(
+      profiles
+          .map((Profile item) => item.id == profile.id ? profile : item)
+          .toList(),
+    );
+  }
+
+  @override
   Future<void> deleteProfile(String profileId) async {
     final List<Profile> profiles = await getProfiles();
 
-    await _storage.saveJsonList(
-      _profilesKey,
-      profiles
-          .where((Profile item) => item.id != profileId)
-          .map((Profile item) => item.toJson())
-          .toList(),
+    await _persist(
+      profiles.where((Profile item) => item.id != profileId).toList(),
     );
+  }
+
+  @override
+  Future<void> deleteAll() async {
+    await _persist(const <Profile>[]);
   }
 
   @override
   Future<void> activateProfile(String profileId) async {
     final List<Profile> profiles = await getProfiles();
 
-    await _storage.saveJsonList(
-      _profilesKey,
+    await _persist(
       profiles
           .map(
             (Profile item) => item.copyWith(
               isActive: item.id == profileId,
             ),
           )
-          .map((Profile item) => item.toJson())
           .toList(),
     );
   }
