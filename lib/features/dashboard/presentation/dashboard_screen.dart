@@ -46,9 +46,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     } catch (error) {
       if (!mounted) return;
-      final String reason = error is SingBoxConfigException
-          ? error.message
-          : error.toString();
+      final String reason =
+          error is SingBoxConfigException ? error.message : error.toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${Strings.of(context).connectionFailed}: $reason'),

@@ -100,7 +100,8 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
     return _lines.where((String line) {
       if (_onlyVpn) {
         final bool matchesVpn = _vpnKeywords.any(
-          (String keyword) => line.toLowerCase().contains(keyword.toLowerCase()),
+          (String keyword) =>
+              line.toLowerCase().contains(keyword.toLowerCase()),
         );
         if (!matchesVpn && !line.startsWith('=====')) {
           return false;

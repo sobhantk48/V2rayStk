@@ -61,7 +61,8 @@ class _NativeLogScreenState extends State<NativeLogScreen> {
     final l = line.toLowerCase();
     if (l.contains('error') || l.contains('e/')) return Colors.red.shade300;
     if (l.contains('warn') || l.contains('w/')) return Colors.orange.shade300;
-    if (l.contains('info') || l.contains('i/')) return Colors.lightBlue.shade300;
+    if (l.contains('info') || l.contains('i/'))
+      return Colors.lightBlue.shade300;
     return Colors.grey.shade300;
   }
 
@@ -77,7 +78,8 @@ class _NativeLogScreenState extends State<NativeLogScreen> {
           // فیلتر VPN
           Row(
             children: [
-              const Text('فقط VPN', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              const Text('فقط VPN',
+                  style: TextStyle(color: Colors.white70, fontSize: 12)),
               Switch(
                 value: _onlyVpn,
                 onChanged: (v) {
@@ -115,10 +117,12 @@ class _NativeLogScreenState extends State<NativeLogScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.greenAccent))
           : _lines.isEmpty
               ? const Center(
-                  child: Text('لاگی یافت نشد', style: TextStyle(color: Colors.white54)),
+                  child: Text('لاگی یافت نشد',
+                      style: TextStyle(color: Colors.white54)),
                 )
               : ListView.builder(
                   controller: _scrollCtrl,

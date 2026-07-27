@@ -12,7 +12,7 @@ class SingBoxConfigGenerator {
 
   /// این مقادیر باید با establishTun در V2rayVpnService.kt یکسان بمانند.
   static const int tunMtu = 1500;
-  static const String tunAddress = '172.19.0.1/30';
+  static const String tunAddress = '172.19.0.1/28';
   static const String tunInterfaceName = 'tun0';
   static const String dnsRemoteAddress = 'https://1.1.1.1/dns-query';
   static const String dnsDirectAddress = '1.1.1.1';

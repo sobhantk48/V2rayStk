@@ -29,8 +29,7 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<List<Profile>> profilesState =
-        ref.watch(profilesProvider);
+    final AsyncValue<List<Profile>> profilesState = ref.watch(profilesProvider);
 
     return AppScaffold(
       title: 'Profiles',
@@ -42,7 +41,8 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
           Expanded(
             child: profilesState.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (Object error, StackTrace stackTrace) => _buildError(error),
+              error: (Object error, StackTrace stackTrace) =>
+                  _buildError(error),
               data: (List<Profile> profiles) => _buildList(profiles),
             ),
           ),
@@ -173,7 +173,8 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle:
+                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
             onTap: () => _activate(profile),
             trailing: PopupMenuButton<String>(
               onSelected: (String action) => _onAction(action, profile),
@@ -188,7 +189,8 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
                   child: Text('Connect with this'),
                 ),
                 PopupMenuItem<String>(value: 'rename', child: Text('Rename')),
-                PopupMenuItem<String>(value: 'copy', child: Text('Copy config')),
+                PopupMenuItem<String>(
+                    value: 'copy', child: Text('Copy config')),
                 PopupMenuItem<String>(value: 'delete', child: Text('Delete')),
               ],
             ),
@@ -227,7 +229,9 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
 
   Future<void> _connect(Profile profile) async {
     try {
-      await ref.read(vpnControllerProvider.notifier).connectWithProfile(profile);
+      await ref
+          .read(vpnControllerProvider.notifier)
+          .connectWithProfile(profile);
       _toast('Connecting with «${profile.name}»...');
     } catch (error) {
       _toast('Connect failed: $error');

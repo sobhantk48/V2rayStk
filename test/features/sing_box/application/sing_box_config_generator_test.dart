@@ -74,8 +74,7 @@ void main() {
     });
 
     test('generates trojan outbound from uri config', () {
-      const rawConfig =
-          'trojan://secret@example.com:443'
+      const rawConfig = 'trojan://secret@example.com:443'
           '?security=tls&type=ws&host=cdn.example.com&path=%2Ftrojan&sni=tls.example.com';
 
       final profile = Profile(

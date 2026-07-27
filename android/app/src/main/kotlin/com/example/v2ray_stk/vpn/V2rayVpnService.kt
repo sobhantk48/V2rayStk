@@ -3,15 +3,13 @@ package com.example.v2ray_stk.vpn
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import com.example.v2ray_stk.MainActivity
+import androidx.core.app.NotificationCompat
 
 class V2rayVpnService : VpnService() {
 
@@ -23,16 +21,26 @@ class V2rayVpnService : VpnService() {
         private const val TAG = "V2rayVpnService"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "v2ray_stk_vpn"
+
+        // باید دقیقا با مقادیر _tunInbound در sing_box_config_generator.dart یکی باشد
+        private const val TUN_ADDRESS = "172.19.0.1"
+        private const val TUN_PREFIX = 28
+        private const val TUN_MTU = 1500
     }
 
     private var tunInterface: ParcelFileDescriptor? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_DISCONNECT) {
-            stopVpn()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_DISCONNECT -> {
+                stopVpn()
+                return START_NOT_STICKY
+            }
+            else -> {
+                val config = intent?.getStringExtra(EXTRA_CONFIG).orEmpty()
+                startVpn(config)
+            }
         }
-        startVpn(intent?.getStringExtra(EXTRA_CONFIG) ?: "")
         return START_STICKY
     }
 
@@ -56,6 +64,7 @@ class V2rayVpnService : VpnService() {
                 return
             }
             tunInterface = tun
+            Log.d(TAG, "tun established fd=${tun.fd} mtu=$TUN_MTU addr=$TUN_ADDRESS/$TUN_PREFIX")
             SingBoxBridge.start(this, tun.fd, config)
             VpnState.update(VpnStatus.CONNECTED)
         } catch (e: Throwable) {
@@ -68,17 +77,18 @@ class V2rayVpnService : VpnService() {
     private fun establishTun(): ParcelFileDescriptor? {
         val builder = Builder()
             .setSession("V2ray Stk")
-            .setMtu(1500)
-            .addAddress("172.19.0.1", 30)
+            .setMtu(TUN_MTU)
+            .addAddress(TUN_ADDRESS, TUN_PREFIX)
             .addRoute("0.0.0.0", 0)
-            .addDnsServer("1.1.1.1")
-            .addDnsServer("8.8.8.8")
+            .addDnsServer("172.19.0.1")
 
         if (Build.VERSION.SDK_INT >= 29) {
             builder.setMetered(false)
         }
+        if (Build.VERSION.SDK_INT >= 21) {
+            builder.allowFamily(android.system.OsConstants.AF_INET)
+        }
 
-        // خود اپ از تونل خارج شود تا حلقه ترافیکی ایجاد نشود
         runCatching { builder.addDisallowedApplication(packageName) }
 
         return builder.establish()
@@ -105,58 +115,25 @@ class V2rayVpnService : VpnService() {
 
     private fun startForegroundSafely() {
         createChannel()
-        val n = buildNotification()
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                NOTIFICATION_ID,
-                n,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, n)
-        }
+        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("V2ray Stk")
+            .setContentText("VPN در حال اجرا")
+            .setSmallIcon(android.R.drawable.stat_sys_vpn_ic)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        runCatching { startForeground(NOTIFICATION_ID, notification) }
     }
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            val nm =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "VPN",
-                    NotificationManager.IMPORTANCE_LOW
-                )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "V2ray Stk VPN",
+                NotificationManager.IMPORTANCE_LOW,
             )
+            manager.createNotificationChannel(channel)
         }
-    }
-
-    private fun buildNotification(): Notification {
-        val flags = if (Build.VERSION.SDK_INT >= 23) {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        val pi = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            flags
-        )
-
-        val builder = if (Build.VERSION.SDK_INT >= 26) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-        }
-
-        return builder
-            .setContentTitle("V2ray Stk")
-            .setContentText("در حال اجرا")
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentIntent(pi)
-            .setOngoing(true)
-            .build()
     }
 }
