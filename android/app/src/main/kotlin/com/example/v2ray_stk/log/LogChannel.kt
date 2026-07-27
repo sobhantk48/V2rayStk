@@ -1,34 +1,32 @@
 package com.example.v2ray_stk.log
 
-import android.os.Process
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * Exposes the application's own logcat output to Flutter.
- * Since Android 4.1 an app can only read its own log entries, so no
- * READ_LOGS permission is required and no other app's data is exposed.
+ * پل ارتباطی خواندن logcat و ارسال آن به Flutter.
+ *
+ * قرارداد کانال:
+ *  - dump(onlyVpn: Boolean?) -> String   (خطوط با \n جدا شده)
+ *  - clear()                 -> Boolean
  */
 object LogChannel {
 
-    private const val CHANNEL = "com.v2ray.stk/logs"
-    private const val MAX_LINES = 4000
+    private const val CHANNEL = "com.v2ray.stk/native_log"
+    private const val MAX_LINES = 2000
 
-    /** Tags we care about when the caller asks for a filtered dump. */
-    private val INTERESTING = listOf(
-        "SingBoxBridge",
+    /** فقط لاگ‌های مرتبط با هسته و VPN */
+    private val VPN_KEYWORDS = listOf(
         "V2rayVpnService",
-        "SingBoxCore",
+        "SingBox",
+        "SingBoxBridge",
         "libbox",
-        "Libbox",
-        "sing-box",
-        "GoLog",
-        "flutter",
-        "AndroidRuntime",
-        "DEBUG",
-        "System.err"
+        "VpnCore",
+        "CoreSelector",
+        "v2ray_stk",
+        "tun",
     )
 
     fun register(engine: FlutterEngine) {
@@ -36,56 +34,83 @@ object LogChannel {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "dump" -> {
-                        val onlyVpn = call.argument<Boolean>("onlyVpn") ?: false
+                        val onlyVpn = when (val arg = call.argument<Any?>("onlyVpn")) {
+                            is Boolean -> arg
+                            is String -> arg.toBoolean()
+                            else -> false
+                        }
                         try {
+                            // خروجی به صورت یک رشته‌ی یکپارچه برگردانده می‌شود
                             result.success(dump(onlyVpn))
-                        } catch (e: Throwable) {
-                            result.error("DUMP_FAILED", e.message, null)
+                        } catch (error: Throwable) {
+                            result.error("LOG_DUMP_FAILED", error.message, null)
                         }
                     }
+
                     "clear" -> {
                         try {
                             clear()
-                            result.success(null)
-                        } catch (e: Throwable) {
-                            result.error("CLEAR_FAILED", e.message, null)
+                            result.success(true)
+                        } catch (error: Throwable) {
+                            result.error("LOG_CLEAR_FAILED", error.message, null)
                         }
                     }
+
                     else -> result.notImplemented()
                 }
             }
     }
 
-    private fun dump(onlyVpn: Boolean): List<String> {
-        val pid = Process.myPid().toString()
-        val lines = ArrayList<String>()
+    private fun dump(onlyVpn: Boolean): String {
+        val lines = readLogcat()
+        val filtered = if (onlyVpn) {
+            lines.filter { line -> VPN_KEYWORDS.any { line.contains(it, ignoreCase = true) } }
+        } else {
+            lines
+        }
 
-        val cmd = arrayListOf("logcat", "-d", "-v", "threadtime", "-t", MAX_LINES.toString())
-        val process = ProcessBuilder(cmd)
-            .redirectErrorStream(true)
-            .start()
+        val trimmed = if (filtered.size > MAX_LINES) {
+            filtered.subList(filtered.size - MAX_LINES, filtered.size)
+        } else {
+            filtered
+        }
 
-        BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-            var line: String? = reader.readLine()
-            while (line != null) {
-                val text = line
-                val mine = text.contains(" $pid ") || text.contains("($pid)")
-                val relevant = INTERESTING.any { text.contains(it, ignoreCase = true) }
-                if (if (onlyVpn) relevant else (mine || relevant)) {
-                    lines.add(text)
+        return if (trimmed.isEmpty()) "" else trimmed.joinToString("\n")
+    }
+
+    private fun readLogcat(): List<String> {
+        val output = mutableListOf<String>()
+        var process: Process? = null
+
+        try {
+            process = ProcessBuilder("logcat", "-d", "-v", "time")
+                .redirectErrorStream(true)
+                .start()
+
+            BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isNotBlank()) {
+                        output.add(line)
+                    }
                 }
-                line = reader.readLine()
             }
-        }
-        process.waitFor()
 
-        if (lines.isEmpty()) {
-            lines.add("(logcat returned no matching lines — pid=$pid)")
+            process.waitFor()
+        } finally {
+            process?.destroy()
         }
-        return if (lines.size > MAX_LINES) lines.takeLast(MAX_LINES) else lines
+
+        return output
     }
 
     private fun clear() {
-        ProcessBuilder(listOf("logcat", "-c")).start().waitFor()
+        var process: Process? = null
+        try {
+            process = ProcessBuilder("logcat", "-c").start()
+            process.waitFor()
+        } finally {
+            process?.destroy()
+        }
     }
 }
