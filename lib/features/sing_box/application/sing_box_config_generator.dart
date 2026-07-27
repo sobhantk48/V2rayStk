@@ -1,9 +1,11 @@
 import 'dart:convert';
 
+import '../../../core/constants/app_constants.dart';
 import '../../profiles/domain/profile.dart';
 import '../../profiles/domain/profile_type.dart';
 import '../domain/sing_box_config.dart';
 import '../domain/sing_box_config_exception.dart';
+import 'v2ray_outbound_converter.dart';
 
 class SingBoxConfigGenerator {
   const SingBoxConfigGenerator();
@@ -14,99 +16,274 @@ class SingBoxConfigGenerator {
   static const String tunInterfaceName = 'tun0';
   static const String dnsServerAddress = '8.8.8.8';
 
+  static const V2rayOutboundConverter _v2rayConverter = V2rayOutboundConverter();
+
+  static const Set<String> _helperOutboundTypes = <String>{
+    'direct',
+    'block',
+    'dns',
+  };
+
   SingBoxConfig generate(Profile profile) {
-    final Map<String, dynamic> outbound = _buildOutbound(profile);
+    final Map<String, dynamic>? json = _tryDecodeJsonObject(profile.rawConfig);
+
+    if (json != null) {
+      // کانفیگ کامل sing-box: ساختار خودش را نگه می‌داریم و فقط
+      // ورودی tun و clash_api را جایگزین/تزریق می‌کنیم.
+      if (_looksLikeSingBoxConfig(json)) {
+        return SingBoxConfig(_adoptSingBoxConfig(json));
+      }
+
+      // کانفیگ v2ray/Xray: outbound را استخراج و ترجمه می‌کنیم.
+      return SingBoxConfig(
+        _wrap(_v2rayConverter.convert(json, tag: _safeTag(profile))),
+      );
+    }
+
+    return SingBoxConfig(_wrap(_buildOutbound(profile)));
+  }
+
+  // --------------------------------------------------------------- templates
+
+  Map<String, dynamic> _wrap(Map<String, dynamic> outbound) {
     final String proxyTag = outbound['tag'] as String;
 
-    return SingBoxConfig(
-      <String, dynamic>{
-        'log': <String, dynamic>{
-          'level': 'info',
-          'timestamp': true,
-        },
-        'dns': <String, dynamic>{
-          'servers': <Map<String, dynamic>>[
-            <String, dynamic>{
-              'tag': 'dns-remote',
-              'address': dnsServerAddress,
-              'strategy': 'ipv4_only',
-              'detour': proxyTag,
-            },
-            <String, dynamic>{
-              'tag': 'dns-direct',
-              'address': dnsServerAddress,
-              'strategy': 'ipv4_only',
-              'detour': 'direct',
-            },
-          ],
-          'final': 'dns-remote',
-          'strategy': 'ipv4_only',
-          'independent_cache': true,
-        },
-        'inbounds': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'type': 'tun',
-            'tag': 'tun-in',
-            'interface_name': tunInterfaceName,
-            'mtu': tunMtu,
-            'address': <String>[tunAddress],
-            // مسیر و آدرس توسط VpnService.Builder ساخته می‌شود،
-            // پس هسته نباید خودش route اضافه کند.
-            'auto_route': false,
-            'strict_route': false,
-            'stack': 'gvisor',
-            'sniff': true,
-            'sniff_override_destination': false,
-          },
+    return <String, dynamic>{
+      'log': _defaultLog(),
+      'dns': _defaultDns(proxyTag),
+      'inbounds': <Map<String, dynamic>>[_tunInbound()],
+      'outbounds': <Map<String, dynamic>>[
+        outbound,
+        <String, dynamic>{'type': 'direct', 'tag': 'direct'},
+        <String, dynamic>{'type': 'block', 'tag': 'block'},
+        <String, dynamic>{'type': 'dns', 'tag': 'dns-out'},
+      ],
+      'route': <String, dynamic>{
+        'rules': <Map<String, dynamic>>[
+          ..._dnsRules('dns-out'),
+          <String, dynamic>{'ip_is_private': true, 'outbound': 'direct'},
         ],
-        'outbounds': <Map<String, dynamic>>[
-          outbound,
-          <String, dynamic>{
-            'type': 'direct',
-            'tag': 'direct',
-          },
-          <String, dynamic>{
-            'type': 'block',
-            'tag': 'block',
-          },
-          <String, dynamic>{
-            'type': 'dns',
-            'tag': 'dns-out',
-          },
-        ],
-        'route': <String, dynamic>{
-          'rules': <Map<String, dynamic>>[
-            // پرس‌وجوهای DNS داخل tun باید به outbound نوع dns برود،
-            // وگرنه resolve انجام نمی‌شود.
-            <String, dynamic>{
-              'protocol': 'dns',
-              'outbound': 'dns-out',
-            },
-            <String, dynamic>{
-              'port': <int>[53],
-              'outbound': 'dns-out',
-            },
-            // ترافیک شبکه‌های محلی از تونل خارج می‌شود.
-            <String, dynamic>{
-              'ip_is_private': true,
-              'outbound': 'direct',
-            },
-          ],
-          'final': proxyTag,
-          'auto_detect_interface': true,
-        },
-        'experimental': <String, dynamic>{
-          'cache_file': <String, dynamic>{
-            'enabled': true,
-          },
-          // آمار لحظه‌ای برای CommandClient در سمت اندروید.
-          'clash_api': <String, dynamic>{
-            'external_controller': '127.0.0.1:9090',
-          },
-        },
+        'final': proxyTag,
+        'auto_detect_interface': true,
       },
-    );
+      'experimental': _experimental(null),
+    };
   }
+
+  Map<String, dynamic> _tunInbound() {
+    return <String, dynamic>{
+      'type': 'tun',
+      'tag': 'tun-in',
+      'interface_name': tunInterfaceName,
+      'mtu': tunMtu,
+      'address': <String>[tunAddress],
+      // مسیر و آدرس توسط VpnService.Builder ساخته می‌شود،
+      // پس هسته نباید خودش route اضافه کند.
+      'auto_route': false,
+      'strict_route': false,
+      'stack': 'gvisor',
+      'sniff': true,
+      'sniff_override_destination': false,
+    };
+  }
+
+  Map<String, dynamic> _defaultLog() {
+    return <String, dynamic>{'level': 'info', 'timestamp': true};
+  }
+
+  Map<String, dynamic> _defaultDns(String proxyTag) {
+    return <String, dynamic>{
+      'servers': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'tag': 'dns-remote',
+          'address': dnsServerAddress,
+          'strategy': 'ipv4_only',
+          'detour': proxyTag,
+        },
+        <String, dynamic>{
+          'tag': 'dns-direct',
+          'address': dnsServerAddress,
+          'strategy': 'ipv4_only',
+          'detour': 'direct',
+        },
+      ],
+      'final': 'dns-remote',
+      'strategy': 'ipv4_only',
+      'independent_cache': true,
+    };
+  }
+
+  List<Map<String, dynamic>> _dnsRules(String dnsTag) {
+    return <Map<String, dynamic>>[
+      <String, dynamic>{'protocol': 'dns', 'outbound': dnsTag},
+      <String, dynamic>{
+        'port': <int>[53],
+        'outbound': dnsTag,
+      },
+    ];
+  }
+
+  Map<String, dynamic> _experimental(Map<String, dynamic>? existing) {
+    final Map<String, dynamic> result =
+        existing == null ? <String, dynamic>{} : Map<String, dynamic>.from(existing);
+
+    final Map<String, dynamic> cache = result['cache_file'] is Map
+        ? Map<String, dynamic>.from(result['cache_file'] as Map)
+        : <String, dynamic>{};
+    cache['enabled'] = true;
+    result['cache_file'] = cache;
+
+    final Map<String, dynamic> clash = result['clash_api'] is Map
+        ? Map<String, dynamic>.from(result['clash_api'] as Map)
+        : <String, dynamic>{};
+    clash['external_controller'] = AppConstants.clashApiListenAddress;
+    // بدون secret هر اپ دیگری روی همان دستگاه می‌تواند این API را صدا بزند.
+    clash['secret'] = AppConstants.clashApiSecret;
+    result['clash_api'] = clash;
+
+    return result;
+  }
+
+  // ----------------------------------------------------- sing-box json input
+
+  bool _looksLikeSingBoxConfig(Map<String, dynamic> json) {
+    final Object? outbounds = json['outbounds'];
+
+    if (outbounds is List) {
+      for (final Object? item in outbounds) {
+        if (item is! Map) {
+          continue;
+        }
+        if (item.containsKey('protocol')) {
+          return false;
+        }
+        if (item.containsKey('type')) {
+          return true;
+        }
+      }
+    }
+
+    return json.containsKey('experimental') || json.containsKey('endpoints');
+  }
+
+  Map<String, dynamic> _adoptSingBoxConfig(Map<String, dynamic> source) {
+    final List<Map<String, dynamic>> outbounds = <Map<String, dynamic>>[
+      for (final Object? item
+          in (source['outbounds'] as List<Object?>? ?? const <Object?>[]))
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+
+    if (outbounds.isEmpty) {
+      throw SingBoxConfigException('sing-box config has no outbounds.');
+    }
+
+    final Set<String> tags = outbounds
+        .map((Map<String, dynamic> item) => (item['tag'] ?? '').toString())
+        .where((String tag) => tag.isNotEmpty)
+        .toSet();
+
+    if (!tags.contains('direct')) {
+      outbounds.add(<String, dynamic>{'type': 'direct', 'tag': 'direct'});
+      tags.add('direct');
+    }
+    if (!tags.contains('block')) {
+      outbounds.add(<String, dynamic>{'type': 'block', 'tag': 'block'});
+      tags.add('block');
+    }
+
+    String dnsTag = '';
+    for (final Map<String, dynamic> item in outbounds) {
+      if ((item['type'] ?? '').toString() == 'dns') {
+        dnsTag = (item['tag'] ?? '').toString();
+        break;
+      }
+    }
+    if (dnsTag.isEmpty) {
+      dnsTag = 'dns-out';
+      outbounds.add(<String, dynamic>{'type': 'dns', 'tag': dnsTag});
+      tags.add(dnsTag);
+    }
+
+    final Map<String, dynamic> route = source['route'] is Map
+        ? Map<String, dynamic>.from(source['route'] as Map)
+        : <String, dynamic>{};
+
+    String proxyTag = (route['final'] ?? '').toString();
+    if (proxyTag.isEmpty || !tags.contains(proxyTag)) {
+      proxyTag = '';
+      for (final Map<String, dynamic> item in outbounds) {
+        final String type = (item['type'] ?? '').toString();
+        final String tag = (item['tag'] ?? '').toString();
+        if (_helperOutboundTypes.contains(type) || tag.isEmpty) {
+          continue;
+        }
+        proxyTag = tag;
+        break;
+      }
+    }
+    if (proxyTag.isEmpty) {
+      proxyTag = 'proxy';
+      outbounds.first['tag'] = proxyTag;
+    }
+
+    final List<Map<String, dynamic>> sourceRules = <Map<String, dynamic>>[
+      for (final Object? item
+          in (route['rules'] as List<Object?>? ?? const <Object?>[]))
+        if (item is Map) Map<String, dynamic>.from(item),
+    ];
+
+    final List<Map<String, dynamic>> rules = <Map<String, dynamic>>[
+      ..._dnsRules(dnsTag),
+      ...sourceRules,
+      if (sourceRules.isEmpty)
+        <String, dynamic>{'ip_is_private': true, 'outbound': 'direct'},
+    ];
+
+    route['rules'] = rules;
+    route['final'] = proxyTag;
+    route['auto_detect_interface'] = true;
+
+    return <String, dynamic>{
+      'log': source['log'] is Map
+          ? Map<String, dynamic>.from(source['log'] as Map)
+          : _defaultLog(),
+      'dns': source['dns'] is Map
+          ? Map<String, dynamic>.from(source['dns'] as Map)
+          : _defaultDns(proxyTag),
+      // ورودی‌های کانفیگ کاربر نادیده گرفته می‌شود؛ روی اندروید
+      // فقط tun معنا دارد و باید با VpnService هم‌تراز باشد.
+      'inbounds': <Map<String, dynamic>>[_tunInbound()],
+      'outbounds': outbounds,
+      'route': route,
+      'experimental': _experimental(
+        source['experimental'] is Map
+            ? Map<String, dynamic>.from(source['experimental'] as Map)
+            : null,
+      ),
+      if (source['ntp'] != null) 'ntp': source['ntp'],
+      if (source['endpoints'] != null) 'endpoints': source['endpoints'],
+    };
+  }
+
+  Map<String, dynamic>? _tryDecodeJsonObject(String rawConfig) {
+    final String value = rawConfig.trim();
+    if (!value.startsWith('{')) {
+      return null;
+    }
+
+    try {
+      final Object? decoded = jsonDecode(value);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } on FormatException {
+      return null;
+    }
+
+    return null;
+  }
+
+  // ------------------------------------------------------------- uri inputs
 
   Map<String, dynamic> _buildOutbound(Profile profile) {
     switch (profile.type) {
@@ -191,6 +368,10 @@ class SingBoxConfigGenerator {
     final String host = (uri.queryParameters['host'] ?? '').trim();
     final String path = (uri.queryParameters['path'] ?? '').trim();
     final String sni = (uri.queryParameters['sni'] ?? '').trim();
+    final String publicKey = (uri.queryParameters['pbk'] ?? '').trim();
+    final String shortId = (uri.queryParameters['sid'] ?? '').trim();
+    final String fingerprint = (uri.queryParameters['fp'] ?? '').trim();
+    final String serviceName = (uri.queryParameters['serviceName'] ?? '').trim();
 
     _require(uri.host.isNotEmpty, 'VLESS server is missing.');
     _require(uri.port > 0, 'VLESS port is invalid.');
@@ -204,15 +385,35 @@ class SingBoxConfigGenerator {
       'uuid': uuid,
     };
 
-    if (flow.isNotEmpty) {
+    if (flow.isNotEmpty && flow != 'none') {
       outbound['flow'] = flow;
     }
 
     if (security == 'tls' || security == 'reality') {
-      outbound['tls'] = <String, dynamic>{
+      final Map<String, dynamic> tls = <String, dynamic>{
         'enabled': true,
         if (sni.isNotEmpty) 'server_name': sni,
       };
+
+      if (security == 'reality') {
+        _require(publicKey.isNotEmpty, 'Reality public key is missing.');
+        tls['utls'] = <String, dynamic>{
+          'enabled': true,
+          'fingerprint': fingerprint.isEmpty ? 'chrome' : fingerprint,
+        };
+        tls['reality'] = <String, dynamic>{
+          'enabled': true,
+          'public_key': publicKey,
+          'short_id': shortId,
+        };
+      } else if (fingerprint.isNotEmpty) {
+        tls['utls'] = <String, dynamic>{
+          'enabled': true,
+          'fingerprint': fingerprint,
+        };
+      }
+
+      outbound['tls'] = tls;
     }
 
     if (type == 'ws') {
@@ -223,6 +424,11 @@ class SingBoxConfigGenerator {
           'headers': <String, dynamic>{
             'Host': host,
           },
+      };
+    } else if (type == 'grpc') {
+      outbound['transport'] = <String, dynamic>{
+        'type': 'grpc',
+        'service_name': serviceName,
       };
     }
 
@@ -236,8 +442,7 @@ class SingBoxConfigGenerator {
     final String host = (uri.queryParameters['host'] ?? '').trim();
     final String path = (uri.queryParameters['path'] ?? '').trim();
     final String sni = (uri.queryParameters['sni'] ?? '').trim();
-    final String security =
-        (uri.queryParameters['security'] ?? 'tls').trim();
+    final String security = (uri.queryParameters['security'] ?? 'tls').trim();
 
     _require(uri.host.isNotEmpty, 'Trojan server is missing.');
     _require(uri.port > 0, 'Trojan port is invalid.');
