@@ -32,18 +32,16 @@ jobs:
       - name: Verify AAR in repo
         run: |
           set -euo pipefail
-          echo "--- android/app/libs ---"
           ls -lh android/app/libs || true
-          echo "--- tracked by git ---"
           git ls-files android/app/libs
           count=$(find android/app/libs -maxdepth 1 -name '*.aar' | wc -l)
           echo "aar count = $count"
           if [ ! -f android/app/libs/libbox.aar ]; then
-            echo "::error::android/app/libs/libbox.aar is missing. Commit it with: git add -f android/app/libs/libbox.aar"
+            echo "::error::android/app/libs/libbox.aar is missing. Run: git add -f android/app/libs/libbox.aar"
             exit 1
           fi
           if [ "$count" -ne 1 ]; then
-            echo "::error::expected exactly 1 aar in android/app/libs, found $count (duplicates cause duplicate-class dex errors)"
+            echo "::error::expected exactly 1 aar, found $count"
             exit 1
           fi
           unzip -l android/app/libs/libbox.aar | head -n 30
@@ -55,14 +53,9 @@ jobs:
         run: flutter analyze --no-fatal-infos || true
 
       - name: Build release APKs
-        id: build
         run: |
-          set -euo pipefail
-          set +e
-          flutter build apk --release \
-            --split-per-abi \
-            --target-platform android-arm,android-arm64 \
-            --verbose 2>&1 | tee build-log.txt
+          set -o pipefail
+          flutter build apk --release --split-per-abi --verbose 2>&1 | tee build-log.txt
           status=${PIPESTATUS[0]}
           echo "build exit code: $status"
           exit $status
@@ -71,9 +64,9 @@ jobs:
         if: failure()
         run: |
           echo "=================== ERROR GREP ==================="
-          grep -nE "FAILURE:|BUILD FAILED|What went wrong|Caused by|error:|Error:|Exception|Unresolved reference|duplicate class|Conflicting configuration|AAPT|Execution failed" build-log.txt | tail -n 80 || echo "no matches"
+          grep -nE "FAILURE:|BUILD FAILED|What went wrong|Caused by|error:|Unresolved reference|duplicate class|Conflicting configuration|Execution failed" build-log.txt | tail -n 80 || echo "no matches"
           echo "=================== LAST 250 LINES ==================="
-          tail -n 250 build-log.txt || echo "no build-log.txt"
+          tail -n 250 build-log.txt || true
           echo "=================== GRADLE DAEMON LOGS ==================="
           find ~/.gradle/daemon -name '*.log' -exec tail -n 60 {} \; 2>/dev/null || true
 
@@ -86,13 +79,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Locate produced APKs
+      - name: List APKs
         if: always()
-        run: |
-          echo "--- flutter-apk dir ---"
-          ls -lhR build/app/outputs/flutter-apk 2>/dev/null || echo "missing"
-          echo "--- any apk in repo ---"
-          find . -name "*.apk" -not -path "./.git/*" -printf "%p  %kKB\n" || true
+        run: ls -lhR build/app/outputs/flutter-apk 2>/dev/null || echo "missing"
 
       - name: Upload APKs
         if: success()
@@ -100,7 +89,7 @@ jobs:
         with:
           name: V2rayStk-release-apks
           path: |
-            build/app/outputs/flutter-apk/*-release.apk
-            build/app/outputs/apk/release/*.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           if-no-files-found: error
           retention-days: 14
