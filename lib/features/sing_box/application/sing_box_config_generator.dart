@@ -53,20 +53,7 @@ class SingBoxConfigGenerator {
     return <String, dynamic>{
       'log': _defaultLog(),
       'dns': _defaultDns(proxyTag),
-      'inbounds': <Map<String, dynamic>>[
-      <String, dynamic>{
-        'type': 'tun',
-        'tag': 'tun-in',
-        'interface_name': 'tun0',
-        'address': <String>['172.19.0.1/30'],
-        'mtu': tunMtu,
-        'auto_route': false,
-        'strict_route': false,
-        'stack': 'gvisor',
-        'sniff': true,
-        'domain_strategy': 'ipv4_only',
-      },
-    ],
+      'inbounds': <Map<String, dynamic>>[_tunInbound()],
       'outbounds': <Map<String, dynamic>>[
         outbound,
         <String, dynamic>{'type': 'direct', 'tag': 'direct'},
@@ -74,10 +61,7 @@ class SingBoxConfigGenerator {
         <String, dynamic>{'type': 'dns', 'tag': 'dns-out'},
       ],
       'route': <String, dynamic>{
-        'rules': <Map<String, dynamic>>[
-          ..._dnsRules('dns-out'),
-          <String, dynamic>{'ip_is_private': true, 'outbound': 'direct'},
-        ],
+        'rules': _baseRouteRules('dns-out'),
         'final': proxyTag,
         'auto_detect_interface': true,
       },
@@ -92,13 +76,12 @@ class SingBoxConfigGenerator {
       'interface_name': tunInterfaceName,
       'mtu': tunMtu,
       'address': <String>[tunAddress],
-      // مسیر و آدرس توسط VpnService.Builder ساخته می‌شود،
-      // پس هسته نباید خودش route اضافه کند.
       'auto_route': false,
       'strict_route': false,
       'stack': 'gvisor',
       'sniff': true,
       'sniff_override_destination': false,
+      'domain_strategy': 'ipv4_only',
     };
   }
 
@@ -112,6 +95,7 @@ class SingBoxConfigGenerator {
         <String, dynamic>{
           'tag': 'dns-remote',
           'address': dnsRemoteAddress,
+          'address_resolver': 'dns-direct',
           'strategy': 'ipv4_only',
           'detour': proxyTag,
         },
@@ -122,6 +106,9 @@ class SingBoxConfigGenerator {
           'detour': 'direct',
         },
       ],
+      'rules': <Map<String, dynamic>>[
+        <String, dynamic>{'outbound': 'any', 'server': 'dns-direct'},
+      ],
       'final': 'dns-remote',
       'strategy': 'ipv4_only',
       'independent_cache': true,
@@ -131,11 +118,6 @@ class SingBoxConfigGenerator {
   List<Map<String, dynamic>> _dnsRules(String dnsTag) {
     return <Map<String, dynamic>>[
       <String, dynamic>{'protocol': 'dns', 'outbound': dnsTag},
-      <String, dynamic>{
-        'network': 'udp',
-        'port': <int>[443],
-        'outbound': 'block',
-      },
       <String, dynamic>{
         'port': <int>[53],
         'outbound': dnsTag,
@@ -597,5 +579,17 @@ class SingBoxConfigGenerator {
     if (!condition) {
       throw SingBoxConfigException(message);
     }
+  }
+
+  List<Map<String, dynamic>> _baseRouteRules(String dnsTag) {
+    return <Map<String, dynamic>>[
+      ..._dnsRules(dnsTag),
+      <String, dynamic>{
+        'network': 'udp',
+        'port': <int>[443],
+        'outbound': 'block',
+      },
+      <String, dynamic>{'ip_is_private': true, 'outbound': 'direct'},
+    ];
   }
 }
