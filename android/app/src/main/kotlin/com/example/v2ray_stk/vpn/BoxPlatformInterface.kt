@@ -4,7 +4,8 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
-import android.os.Build
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.util.Log
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.NetworkInterfaceIterator
@@ -13,178 +14,197 @@ import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.StringIterator
 import io.nekohasekai.libbox.TunOptions
 import io.nekohasekai.libbox.WIFIState
-import java.net.InetSocketAddress
-import io.nekohasekai.libbox.NetworkInterface as LibboxNetworkInterface
+import java.net.Inet6Address
 import java.net.NetworkInterface as JavaNetworkInterface
+import io.nekohasekai.libbox.NetworkInterface as BoxNetworkInterface
 
 /**
- * پیاده‌سازی PlatformInterface برای libbox.
+ * PlatformInterface برای libbox.
  *
- * نکته حیاتی: روی اندروید ۱۱+ گوگل استفاده از netlink socket را بسته است.
- * پس sing-box نباید خودش اینترفیس پیش‌فرض را پیدا کند؛ ما با
- * ConnectivityManager این کار را انجام می‌دهیم و به هسته اطلاع می‌دهیم.
- * در غیر این صورت newService با خطای
- * "netlink socket in Android is banned by Google" شکست می‌خورد.
+ * چرا monitor و interfaceGetter باید true باشند:
+ * اگر false باشند، هسته sing-box سراغ netlink می‌رود که روی اندروید
+ * (SELinux) بلاک است، اینترفیس پیش‌فرض شناسایی نمی‌شود، سوکت خروجی bind
+ * نمی‌شود و نتیجه‌اش صفر بایت ترافیک است.
  */
 class BoxPlatformInterface(
-    private val context: Context,
+    context: Context,
     private val tunFdProvider: () -> Int,
     private val protectFd: (Int) -> Boolean,
 ) : PlatformInterface {
 
-    companion object {
-        private const val TAG = "libbox"
+    private companion object {
+        const val TAG = "libbox"
 
-        // معادل مقادیر net.Flags در Go
-        private const val FLAG_UP = 1 shl 0
-        private const val FLAG_BROADCAST = 1 shl 1
-        private const val FLAG_LOOPBACK = 1 shl 2
-        private const val FLAG_POINT_TO_POINT = 1 shl 3
-        private const val FLAG_MULTICAST = 1 shl 4
-        private const val FLAG_RUNNING = 1 shl 5
+        // معادل net.Flags در Go
+        const val FLAG_UP = 1
+        const val FLAG_BROADCAST = 2
+        const val FLAG_LOOPBACK = 4
+        const val FLAG_POINT_TO_POINT = 8
+        const val FLAG_MULTICAST = 16
     }
 
-    private val connectivity: ConnectivityManager by lazy {
-        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    }
+    private val connectivity: ConnectivityManager? =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
+    @Volatile
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    // ---------------------------------------------------------------- TUN
+    // ------------------------------------------------------------------ TUN --
 
     override fun openTun(options: TunOptions?): Int {
         val fd = tunFdProvider()
         if (fd <= 0) throw IllegalStateException("tun fd is not ready")
-        Log.d(TAG, "openTun -> fd=$fd (mtu=${options?.mtu ?: -1})")
+        LogStore.append("libbox", "openTun -> fd=$fd")
         return fd
     }
 
-    // ---------------------------------------------------------------- Log
-
     override fun writeLog(message: String?) {
-        Log.d(TAG, message ?: "")
+        val msg = message ?: return
+        Log.d(TAG, msg)
+        LogStore.append("core", msg)
     }
 
-    // ------------------------------------------------ Default interface
+    // ------------------------------------------------ Default Interface Monitor
 
-    /** true = خودمان مانیتور می‌کنیم، هسته سراغ netlink نرود. */
     override fun usePlatformDefaultInterfaceMonitor(): Boolean = true
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
         if (listener == null) return
-        closeDefaultInterfaceMonitor(null)
+        val cm = connectivity
+        if (cm == null) {
+            LogStore.append("libbox", "ConnectivityManager در دسترس نیست")
+            return
+        }
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                pushDefaultInterface(listener, network)
+                push(network)
             }
 
-            override fun onLinkPropertiesChanged(
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                push(network)
+            }
+
+            override fun onCapabilitiesChanged(
                 network: Network,
-                linkProperties: LinkProperties,
+                networkCapabilities: NetworkCapabilities,
             ) {
-                pushInterfaceName(listener, linkProperties.interfaceName)
+                push(network)
             }
 
             override fun onLost(network: Network) {
                 runCatching { listener.updateDefaultInterface("", -1) }
+                    .onFailure {
+                        LogStore.append("libbox", "updateDefaultInterface(lost) خطا: ${it.message}")
+                    }
+            }
+
+            private fun push(network: Network) {
+                val name = runCatching { cm.getLinkProperties(network)?.interfaceName }
+                    .getOrNull() ?: return
+                val index = interfaceIndexOf(name)
+                if (index <= 0) return
+                LogStore.append("libbox", "defaultInterface = $name (index=$index)")
+                runCatching { listener.updateDefaultInterface(name, index) }
+                    .onFailure {
+                        LogStore.append("libbox", "updateDefaultInterface خطا: ${it.message}")
+                    }
             }
         }
 
-        runCatching {
-            connectivity.registerDefaultNetworkCallback(callback)
-            networkCallback = callback
-        }.onFailure { Log.w(TAG, "registerDefaultNetworkCallback failed", it) }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
 
-        // وضعیت فعلی را فوراً بفرست تا هسته منتظر نماند
-        runCatching {
-            val active = connectivity.activeNetwork
-            if (active != null) {
-                pushDefaultInterface(listener, active)
-            } else {
-                listener.updateDefaultInterface("", -1)
+        runCatching { cm.registerNetworkCallback(request, callback) }
+            .onSuccess {
+                networkCallback = callback
+                LogStore.append("libbox", "interface monitor شروع شد")
+                pushCurrentNetwork(cm, listener)
             }
-        }
+            .onFailure {
+                LogStore.append("libbox", "registerNetworkCallback خطا: ${it.message}")
+            }
     }
 
     override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
-        networkCallback?.let { cb ->
-            runCatching { connectivity.unregisterNetworkCallback(cb) }
-        }
+        val callback = networkCallback ?: return
+        runCatching { connectivity?.unregisterNetworkCallback(callback) }
         networkCallback = null
+        LogStore.append("libbox", "interface monitor متوقف شد")
     }
 
-    private fun pushDefaultInterface(listener: InterfaceUpdateListener, network: Network) {
-        val name = runCatching {
-            connectivity.getLinkProperties(network)?.interfaceName
-        }.getOrNull()
-        pushInterfaceName(listener, name)
-    }
-
-    private fun pushInterfaceName(listener: InterfaceUpdateListener, name: String?) {
-        if (name.isNullOrBlank()) return
-        val index = runCatching {
-            JavaNetworkInterface.getByName(name)?.index ?: -1
-        }.getOrDefault(-1)
-        Log.d(TAG, "defaultInterface -> $name (index=$index)")
+    private fun pushCurrentNetwork(cm: ConnectivityManager, listener: InterfaceUpdateListener) {
+        val active = runCatching { cm.activeNetwork }.getOrNull() ?: return
+        val name = runCatching { cm.getLinkProperties(active)?.interfaceName }.getOrNull() ?: return
+        val index = interfaceIndexOf(name)
+        if (index <= 0) return
+        LogStore.append("libbox", "defaultInterface(initial) = $name (index=$index)")
         runCatching { listener.updateDefaultInterface(name, index) }
-            .onFailure { Log.w(TAG, "updateDefaultInterface failed", it) }
     }
 
-    // ------------------------------------------------ Interface getter
+    private fun interfaceIndexOf(name: String): Int =
+        runCatching { JavaNetworkInterface.getByName(name)?.index ?: -1 }.getOrDefault(-1)
 
-    /** true = لیست اینترفیس‌ها را ما می‌دهیم، نه netlink. */
+    // ------------------------------------------------------- Interface Getter --
+
     override fun usePlatformInterfaceGetter(): Boolean = true
 
     override fun getInterfaces(): NetworkInterfaceIterator {
-        val result = mutableListOf<LibboxNetworkInterface>()
-        runCatching {
-            val ifaces = JavaNetworkInterface.getNetworkInterfaces() ?: return@runCatching
-            for (iface in ifaces) {
-                val item = LibboxNetworkInterface()
-                item.name = iface.name
-                item.index = runCatching { iface.index }.getOrDefault(-1)
-                item.mtu = runCatching { iface.mtu }.getOrDefault(1500)
-                item.flags = buildFlags(iface)
+        val result = mutableListOf<BoxNetworkInterface>()
+        val all = runCatching { JavaNetworkInterface.getNetworkInterfaces() }.getOrNull()
 
-                val addresses = mutableListOf<String>()
-                runCatching {
-                    for (addr in iface.interfaceAddresses) {
-                        val host = addr.address?.hostAddress ?: continue
-                        val clean = host.substringBefore('%')
-                        addresses.add("$clean/${addr.networkPrefixLength}")
-                    }
-                }
-                item.addresses = StringArrayIterator(addresses)
+        while (all != null && all.hasMoreElements()) {
+            val ni = all.nextElement() ?: continue
+            val boxIf = BoxNetworkInterface()
+            boxIf.setName(ni.name)
+            boxIf.setIndex(ni.index)
+            boxIf.setMTU(runCatching { ni.mtu }.getOrDefault(1500))
+            boxIf.setFlags(flagsOf(ni))
+            boxIf.setAddresses(SimpleStringIterator(addressesOf(ni)))
+            result.add(boxIf)
+        }
 
-                result.add(item)
-            }
-        }.onFailure { Log.w(TAG, "getInterfaces failed", it) }
-
-        return InterfaceArrayIterator(result)
+        LogStore.append("libbox", "getInterfaces -> ${result.size} اینترفیس")
+        return SimpleInterfaceIterator(result)
     }
 
-    private fun buildFlags(iface: JavaNetworkInterface): Int {
+    private fun flagsOf(ni: JavaNetworkInterface): Int {
         var flags = 0
         runCatching {
-            if (iface.isUp) flags = flags or FLAG_UP or FLAG_RUNNING
-            if (iface.isLoopback) flags = flags or FLAG_LOOPBACK
-            if (iface.isPointToPoint) flags = flags or FLAG_POINT_TO_POINT
-            if (iface.supportsMulticast()) flags = flags or FLAG_MULTICAST
-            if (!iface.isLoopback && !iface.isPointToPoint) flags = flags or FLAG_BROADCAST
+            if (ni.isUp) flags = flags or FLAG_UP
+            if (ni.supportsMulticast()) flags = flags or FLAG_MULTICAST
+            if (ni.isLoopback) flags = flags or FLAG_LOOPBACK
+            if (ni.isPointToPoint) flags = flags or FLAG_POINT_TO_POINT
+            if (!ni.isLoopback && !ni.isPointToPoint) flags = flags or FLAG_BROADCAST
         }
         return flags
     }
 
-    // ------------------------------------------------ Socket protection
+    private fun addressesOf(ni: JavaNetworkInterface): List<String> {
+        val addresses = mutableListOf<String>()
+        runCatching {
+            for (ia in ni.interfaceAddresses) {
+                val addr = ia.address ?: continue
+                val host = addr.hostAddress ?: continue
+                val clean = if (addr is Inet6Address) host.substringBefore('%') else host
+                addresses.add("$clean/${ia.networkPrefixLength}")
+            }
+        }
+        return addresses
+    }
+
+    // ---------------------------------------------------- Socket Protection ---
 
     override fun usePlatformAutoDetectInterfaceControl(): Boolean = true
 
     override fun autoDetectInterfaceControl(fd: Int) {
-        protectFd(fd)
+        if (!protectFd(fd)) {
+            LogStore.append("libbox", "protect(fd=$fd) ناموفق")
+        }
     }
 
-    // ------------------------------------------------ Process matching
+    // --------------------------------------------------------------- Misc ----
 
     override fun useProcFS(): Boolean = false
 
@@ -194,39 +214,13 @@ class BoxPlatformInterface(
         sourcePort: Int,
         destinationAddress: String?,
         destinationPort: Int,
-    ): Int {
-        if (Build.VERSION.SDK_INT < 29) {
-            throw UnsupportedOperationException("findConnectionOwner requires API 29+")
-        }
-        val uid = connectivity.getConnectionOwnerUid(
-            ipProtocol,
-            InetSocketAddress(sourceAddress, sourcePort),
-            InetSocketAddress(destinationAddress, destinationPort),
-        )
-        if (uid == -1) throw IllegalStateException("connection owner not found")
-        return uid
-    }
+    ): Int = throw UnsupportedOperationException("findConnectionOwner")
 
-    override fun packageNameByUid(uid: Int): String {
-        val packages = context.packageManager.getPackagesForUid(uid)
-        if (packages.isNullOrEmpty()) throw IllegalStateException("package not found for uid $uid")
-        return packages[0]
-    }
+    override fun packageNameByUid(uid: Int): String =
+        throw UnsupportedOperationException("packageNameByUid")
 
-    override fun uidByPackageName(packageName: String?): Int {
-        if (packageName.isNullOrBlank()) throw IllegalStateException("empty package name")
-        return if (Build.VERSION.SDK_INT >= 33) {
-            context.packageManager.getPackageUid(
-                packageName,
-                android.content.pm.PackageManager.PackageInfoFlags.of(0),
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getPackageUid(packageName, 0)
-        }
-    }
-
-    // ------------------------------------------------ Misc
+    override fun uidByPackageName(packageName: String?): Int =
+        throw UnsupportedOperationException("uidByPackageName")
 
     override fun underNetworkExtension(): Boolean = false
 
@@ -238,22 +232,22 @@ class BoxPlatformInterface(
 
     override fun sendNotification(notification: Notification?) {}
 
-    // ------------------------------------------------ Iterators
+    // ----------------------------------------------------------- Iterators ---
 
-    private class StringArrayIterator(
-        private val values: List<String>,
-    ) : StringIterator {
-        private var cursor = 0
-        override fun hasNext(): Boolean = cursor < values.size
-        override fun len(): Int = values.size
-        override fun next(): String = values[cursor++]
+    private class SimpleInterfaceIterator(
+        private val items: List<BoxNetworkInterface>,
+    ) : NetworkInterfaceIterator {
+        private var index = 0
+        override fun hasNext(): Boolean = index < items.size
+        override fun next(): BoxNetworkInterface = items[index++]
     }
 
-    private class InterfaceArrayIterator(
-        private val values: List<LibboxNetworkInterface>,
-    ) : NetworkInterfaceIterator {
-        private var cursor = 0
-        override fun hasNext(): Boolean = cursor < values.size
-        override fun next(): LibboxNetworkInterface = values[cursor++]
+    private class SimpleStringIterator(
+        private val items: List<String>,
+    ) : StringIterator {
+        private var index = 0
+        override fun hasNext(): Boolean = index < items.size
+        override fun len(): Int = items.size
+        override fun next(): String = items[index++]
     }
 }
