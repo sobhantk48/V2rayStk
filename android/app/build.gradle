@@ -20,6 +20,11 @@ android {
         targetSdk 36
         versionCode flutter.versionCode
         versionName flutter.versionName
+
+        // libbox.aar فقط این دو ABI را دارد؛ x86_64 باعث UnsatisfiedLinkError می‌شود
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
     }
 
     buildTypes {
@@ -38,6 +43,8 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging false
+            // هسته sing-box حجیم است؛ از فشرده‌سازی مجدد جلوگیری می‌کنیم
+            pickFirsts += ["**/libbox.so"]
         }
         resources {
             excludes += ["/META-INF/{AL2.0,LGPL2.1}"]
