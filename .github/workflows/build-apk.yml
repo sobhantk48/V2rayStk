@@ -55,7 +55,7 @@ jobs:
       - name: Build release APKs
         run: |
           set -o pipefail
-          flutter build apk --release --split-per-abi --verbose 2>&1 | tee build-log.txt
+          flutter build apk --release --verbose 2>&1 | tee build-log.txt
           status=${PIPESTATUS[0]}
           echo "build exit code: $status"
           exit $status
