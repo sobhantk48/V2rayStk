@@ -52,7 +52,20 @@ class SingBoxConfigGenerator {
     return <String, dynamic>{
       'log': _defaultLog(),
       'dns': _defaultDns(proxyTag),
-      'inbounds': <Map<String, dynamic>>[_tunInbound()],
+      'inbounds': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'type': 'tun',
+        'tag': 'tun-in',
+        'interface_name': 'tun0',
+        'address': <String>['172.19.0.1/30'],
+        'mtu': 1500,
+        'auto_route': true,
+        'strict_route': false,
+        'stack': 'system',
+        'sniff': true,
+        'domain_strategy': 'ipv4_only',
+      },
+    ],
       'outbounds': <Map<String, dynamic>>[
         outbound,
         <String, dynamic>{'type': 'direct', 'tag': 'direct'},
