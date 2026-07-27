@@ -34,23 +34,23 @@ object SingBoxBridge {
         val platform = BoxPlatformInterface(
             context = context,
             tunFdProvider = { currentTunFd },
-            protectFd = { fd ->
-                val ok = runCatching { vpnService.protect(fd) }.getOrDefault(false)
-                ok
-            },
+            protectFd = { fd -> runCatching { vpnService.protect(fd) }.getOrDefault(false) },
         )
 
-        LogStore.append("core", "libbox version = ${runCatching { Libbox.version() }.getOrDefault("?")}")
+        val version = runCatching { Libbox.version() }.getOrDefault("?")
+        LogStore.add("libbox version = $version", levelHint = "info", tag = "core")
 
         runCatching { Libbox.checkConfig(config) }
-            .onFailure { LogStore.append("core", "checkConfig خطا: ${it.message}") }
+            .onFailure {
+                LogStore.add("checkConfig خطا: ${it.message}", levelHint = "error", tag = "core")
+            }
 
         val service = Libbox.newService(config, platform)
         service.start()
         boxService = service
 
         Log.d(TAG, "sing-box started")
-        LogStore.append("core", "sing-box راه‌اندازی شد")
+        LogStore.add("sing-box راه‌اندازی شد", levelHint = "info", tag = "core")
     }
 
     @Synchronized
@@ -82,6 +82,6 @@ object SingBoxBridge {
 
         Libbox.setup(options)
         setupDone = true
-        LogStore.append("core", "Libbox.setup انجام شد (base=$basePathValue)")
+        LogStore.add("Libbox.setup انجام شد (base=$basePathValue)", levelHint = "info", tag = "core")
     }
 }

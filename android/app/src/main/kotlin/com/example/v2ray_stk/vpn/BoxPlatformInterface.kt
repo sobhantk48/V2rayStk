@@ -22,9 +22,9 @@ import io.nekohasekai.libbox.NetworkInterface as BoxNetworkInterface
  * PlatformInterface برای libbox.
  *
  * چرا monitor و interfaceGetter باید true باشند:
- * اگر false باشند، هسته sing-box سراغ netlink می‌رود که روی اندروید
- * (SELinux) بلاک است، اینترفیس پیش‌فرض شناسایی نمی‌شود، سوکت خروجی bind
- * نمی‌شود و نتیجه‌اش صفر بایت ترافیک است.
+ * اگر false باشند هستهٔ sing-box سراغ netlink می‌رود که روی اندروید
+ * بلاک است، اینترفیس پیش‌فرض شناسایی نمی‌شود، سوکت خروجی bind نمی‌شود
+ * و نتیجه‌اش صفر بایت ترافیک است.
  */
 class BoxPlatformInterface(
     context: Context,
@@ -49,19 +49,27 @@ class BoxPlatformInterface(
     @Volatile
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
+    private fun logInfo(message: String) {
+        LogStore.add(message, levelHint = "info", tag = TAG)
+    }
+
+    private fun logError(message: String) {
+        LogStore.add(message, levelHint = "error", tag = TAG)
+    }
+
     // ------------------------------------------------------------------ TUN --
 
     override fun openTun(options: TunOptions?): Int {
         val fd = tunFdProvider()
         if (fd <= 0) throw IllegalStateException("tun fd is not ready")
-        LogStore.append("libbox", "openTun -> fd=$fd")
+        logInfo("openTun -> fd=$fd")
         return fd
     }
 
     override fun writeLog(message: String?) {
         val msg = message ?: return
         Log.d(TAG, msg)
-        LogStore.append("core", msg)
+        LogStore.add(msg, tag = "core")
     }
 
     // ------------------------------------------------ Default Interface Monitor
@@ -72,7 +80,7 @@ class BoxPlatformInterface(
         if (listener == null) return
         val cm = connectivity
         if (cm == null) {
-            LogStore.append("libbox", "ConnectivityManager در دسترس نیست")
+            logError("ConnectivityManager در دسترس نیست")
             return
         }
 
@@ -94,9 +102,7 @@ class BoxPlatformInterface(
 
             override fun onLost(network: Network) {
                 runCatching { listener.updateDefaultInterface("", -1) }
-                    .onFailure {
-                        LogStore.append("libbox", "updateDefaultInterface(lost) خطا: ${it.message}")
-                    }
+                    .onFailure { logError("updateDefaultInterface(lost) خطا: ${it.message}") }
             }
 
             private fun push(network: Network) {
@@ -104,11 +110,9 @@ class BoxPlatformInterface(
                     .getOrNull() ?: return
                 val index = interfaceIndexOf(name)
                 if (index <= 0) return
-                LogStore.append("libbox", "defaultInterface = $name (index=$index)")
+                logInfo("defaultInterface = $name (index=$index)")
                 runCatching { listener.updateDefaultInterface(name, index) }
-                    .onFailure {
-                        LogStore.append("libbox", "updateDefaultInterface خطا: ${it.message}")
-                    }
+                    .onFailure { logError("updateDefaultInterface خطا: ${it.message}") }
             }
         }
 
@@ -119,19 +123,17 @@ class BoxPlatformInterface(
         runCatching { cm.registerNetworkCallback(request, callback) }
             .onSuccess {
                 networkCallback = callback
-                LogStore.append("libbox", "interface monitor شروع شد")
+                logInfo("interface monitor شروع شد")
                 pushCurrentNetwork(cm, listener)
             }
-            .onFailure {
-                LogStore.append("libbox", "registerNetworkCallback خطا: ${it.message}")
-            }
+            .onFailure { logError("registerNetworkCallback خطا: ${it.message}") }
     }
 
     override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {
         val callback = networkCallback ?: return
         runCatching { connectivity?.unregisterNetworkCallback(callback) }
         networkCallback = null
-        LogStore.append("libbox", "interface monitor متوقف شد")
+        logInfo("interface monitor متوقف شد")
     }
 
     private fun pushCurrentNetwork(cm: ConnectivityManager, listener: InterfaceUpdateListener) {
@@ -139,7 +141,7 @@ class BoxPlatformInterface(
         val name = runCatching { cm.getLinkProperties(active)?.interfaceName }.getOrNull() ?: return
         val index = interfaceIndexOf(name)
         if (index <= 0) return
-        LogStore.append("libbox", "defaultInterface(initial) = $name (index=$index)")
+        logInfo("defaultInterface(initial) = $name (index=$index)")
         runCatching { listener.updateDefaultInterface(name, index) }
     }
 
@@ -165,7 +167,7 @@ class BoxPlatformInterface(
             result.add(boxIf)
         }
 
-        LogStore.append("libbox", "getInterfaces -> ${result.size} اینترفیس")
+        logInfo("getInterfaces -> ${result.size} اینترفیس")
         return SimpleInterfaceIterator(result)
     }
 
@@ -200,7 +202,7 @@ class BoxPlatformInterface(
 
     override fun autoDetectInterfaceControl(fd: Int) {
         if (!protectFd(fd)) {
-            LogStore.append("libbox", "protect(fd=$fd) ناموفق")
+            logError("protect(fd=$fd) ناموفق")
         }
     }
 
