@@ -31,7 +31,7 @@ class VpnStats {
       downloadBps: downloadBps ?? this.downloadBps,
       uploadBps: uploadBps ?? this.uploadBps,
       totalDownload: totalDownload ?? this.totalDownload,
-      totalUpload: uploadBps == null ? this.totalUpload : (totalUpload ?? this.totalUpload),
+      totalUpload: totalUpload ?? this.totalUpload,
       location: location ?? this.location,
       duration: duration ?? this.duration,
     );

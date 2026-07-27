@@ -215,7 +215,7 @@ class _StatGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String dash = '—';
+    const String dash = '—';
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
