@@ -11,7 +11,7 @@ class SingBoxConfigGenerator {
   const SingBoxConfigGenerator();
 
   /// این مقادیر باید با establishTun در V2rayVpnService.kt یکسان بمانند.
-  static const int tunMtu = 9000;
+  static const int tunMtu = 1500;
   static const String tunAddress = '172.19.0.1/30';
   static const String tunInterfaceName = 'tun0';
   static const String dnsServerAddress = '8.8.8.8';
@@ -58,10 +58,10 @@ class SingBoxConfigGenerator {
         'tag': 'tun-in',
         'interface_name': 'tun0',
         'address': <String>['172.19.0.1/30'],
-        'mtu': 1500,
-        'auto_route': true,
+        'mtu': tunMtu,
+        'auto_route': false,
         'strict_route': false,
-        'stack': 'system',
+        'stack': 'gvisor',
         'sniff': true,
         'domain_strategy': 'ipv4_only',
       },
