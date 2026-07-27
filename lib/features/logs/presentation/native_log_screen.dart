@@ -59,10 +59,15 @@ class _NativeLogScreenState extends State<NativeLogScreen> {
 
   Color _lineColor(String line) {
     final l = line.toLowerCase();
-    if (l.contains('error') || l.contains('e/')) return Colors.red.shade300;
-    if (l.contains('warn') || l.contains('w/')) return Colors.orange.shade300;
-    if (l.contains('info') || l.contains('i/'))
+    if (l.contains('error') || l.contains('e/')) {
+      return Colors.red.shade300;
+    }
+    if (l.contains('warn') || l.contains('w/')) {
+      return Colors.orange.shade300;
+    }
+    if (l.contains('info') || l.contains('i/')) {
       return Colors.lightBlue.shade300;
+    }
     return Colors.grey.shade300;
   }
 
