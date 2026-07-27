@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/dashboard/presentation/dashboard_screen.dart';
-import '../features/logs/presentation/log_screen.dart';
+import '../features/logs/presentation/native_log_screen.dart';
 import '../features/profiles/presentation/profiles_screen.dart';
-import '../features/logs/presentation/log_viewer_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/subscriptions/presentation/subscriptions_screen.dart';
 
@@ -38,13 +37,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/logs',
       builder: (BuildContext context, GoRouterState state) {
-        return const LogScreen();
-      },
-    ),
-    GoRoute(
-      path: '/native-logs',
-      builder: (BuildContext context, GoRouterState state) {
-        return const LogViewerScreen();
+        return const NativeLogScreen();
       },
     ),
   ],

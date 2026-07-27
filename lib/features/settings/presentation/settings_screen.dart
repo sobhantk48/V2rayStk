@@ -14,27 +14,34 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: <Widget>[
-          const _SectionHeader(title: 'عیب‌یابی / Diagnostics'),
+          const _SectionHeader('Diagnostics / عیب‌یابی'),
           ListTile(
-            leading: const Icon(Icons.article_outlined),
-            title: const Text('لاگ برنامه'),
-            subtitle: const Text('App logs'),
-            trailing: const Icon(Icons.chevron_left),
+            leading: const Icon(Icons.terminal, color: Colors.greenAccent),
+            title: const Text('Native Logs'),
+            subtitle: const Text('لاگ‌های هسته sing-box (logcat)'),
+            trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/logs'),
           ),
-          ListTile(
-            leading: const Icon(Icons.terminal),
-            title: const Text('لاگ نیتیو (هسته sing-box)'),
-            subtitle: const Text('Native logcat — errors from libbox'),
-            trailing: const Icon(Icons.chevron_left),
-            onTap: () => context.push('/native-logs'),
+          const Divider(height: 1),
+          const _SectionHeader('General / عمومی'),
+          const ListTile(
+            leading: Icon(Icons.language),
+            title: Text('Language / زبان'),
+            subtitle: Text('فارسی / English'),
+            trailing: Icon(Icons.chevron_right),
           ),
-          const Divider(height: 24),
-          const _SectionHeader(title: 'عمومی / General'),
+          const ListTile(
+            leading: Icon(Icons.admin_panel_settings),
+            title: Text('Admin Panel / پنل ادمین'),
+            subtitle: Text('تنظیمات پیشرفته و رمز عبور'),
+            trailing: Icon(Icons.chevron_right),
+          ),
+          const Divider(height: 1),
+          const _SectionHeader('About / درباره'),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('نسخه'),
-            subtitle: Text('V2ray Stk'),
+            title: Text('V2ray Stk'),
+            subtitle: Text('Core: sing-box (libbox)'),
           ),
         ],
       ),
@@ -43,20 +50,22 @@ class SettingsScreen extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title});
+  const _SectionHeader(this.text);
 
-  final String title;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Text(
-        title,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+          color: Theme.of(context).colorScheme.primary,
+        ),
       ),
     );
   }
