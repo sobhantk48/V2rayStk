@@ -14,10 +14,6 @@ env:
   FLUTTER_VERSION: "3.35.5"
   NDK_VERSION: r27c
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
   libbox:
     name: Build libbox.aar
@@ -26,6 +22,7 @@ jobs:
       - name: Compute cache key
         id: meta
         run: |
+          set -euo pipefail
           TAGS_SLUG="$(echo "${BUILD_TAGS}" | tr ',' '-')"
           echo "key=libbox-${SING_BOX_REF}-${NDK_VERSION}-${GOMOBILE_VERSION}-${TAGS_SLUG}" >> "$GITHUB_OUTPUT"
 
@@ -124,6 +121,12 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Clean stale AAR copies
+        run: |
+          set -euo pipefail
+          rm -rf android/app/libs
+          mkdir -p android/app/libs
+
       - name: Download libbox.aar
         uses: actions/download-artifact@v4
         with:
@@ -135,6 +138,9 @@ jobs:
           set -euo pipefail
           ls -lh android/app/libs
           test -f android/app/libs/libbox.aar
+          COUNT="$(find android/app/libs -name '*.aar' | wc -l)"
+          echo "aar count = $COUNT"
+          test "$COUNT" -eq 1
 
       - name: flutter pub get
         run: flutter pub get
@@ -143,7 +149,6 @@ jobs:
         run: flutter analyze --no-fatal-infos || true
 
       - name: Build release APKs
-        id: build
         run: |
           set -euo pipefail
           flutter build apk --release \
@@ -151,12 +156,12 @@ jobs:
             --target-platform android-arm,android-arm64 \
             --verbose 2>&1 | tee build-log.txt
 
-      - name: Show gradle failure details
-        if: failure()
+      - name: Show build errors
+        if: always()
         run: |
-          echo "===== last 300 lines ====="
-          tail -n 300 build-log.txt || true
-          echo "===== error lines ====="
+          echo "--- last 150 lines ---"
+          tail -n 150 build-log.txt || true
+          echo "--- error grep ---"
           grep -nEi "error|exception|failed|what went wrong|caused by" build-log.txt | tail -n 80 || true
 
       - name: Upload build log
