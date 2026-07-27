@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/app_scaffold.dart';
 import '../../../l10n/strings.dart';
+import '../../sing_box/domain/sing_box_config_exception.dart';
 import '../../vpn/application/vpn_controller.dart';
 import '../../vpn/application/vpn_stats_controller.dart';
 import '../../vpn/domain/vpn_stats.dart';
@@ -42,10 +44,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       } else if (state == VpnConnectionState.disconnected) {
         await controller.connect();
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      final String reason = error is SingBoxConfigException
+          ? error.message
+          : error.toString();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(Strings.of(context).connectionFailed)),
+        SnackBar(
+          content: Text('${Strings.of(context).connectionFailed}: $reason'),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Copy',
+            onPressed: () => Clipboard.setData(ClipboardData(text: reason)),
+          ),
+        ),
       );
     }
   }
