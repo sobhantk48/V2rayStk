@@ -29,6 +29,7 @@ class V2rayVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
+            LogStore.add("درخواست قطع اتصال", "info", "app")
             stopVpn()
             return START_NOT_STICKY
         }
@@ -39,9 +40,17 @@ class V2rayVpnService : VpnService() {
     private fun startVpn(config: String) {
         startForegroundSafely()
         VpnState.update(VpnStatus.CONNECTING)
+        LogStore.add("شروع اتصال... (طول کانفیگ: ${config.length})", "info", "app")
 
         if (!SingBoxBridge.isCoreAvailable) {
-            Log.w(TAG, "libbox موجود نیست؛ tun ساخته نمی‌شود")
+            LogStore.add("libbox موجود نیست؛ tun ساخته نمی‌شود", "fatal", "app")
+            VpnState.update(VpnStatus.DISCONNECTED)
+            stopVpn()
+            return
+        }
+
+        if (config.isBlank()) {
+            LogStore.add("کانفیگ خالی است؛ اتصال لغو شد", "error", "app")
             VpnState.update(VpnStatus.DISCONNECTED)
             stopVpn()
             return
@@ -50,15 +59,20 @@ class V2rayVpnService : VpnService() {
         try {
             val tun = establishTun()
             if (tun == null) {
+                LogStore.add("ساخت TUN ناموفق بود (establish برگشت null)", "error", "app")
                 VpnState.update(VpnStatus.DISCONNECTED)
                 stopVpn()
                 return
             }
             tunInterface = tun
+            LogStore.add("TUN ساخته شد، fd=${tun.fd}", "info", "app")
+
             SingBoxBridge.start(this, tun.fd, config)
             VpnState.update(VpnStatus.CONNECTED)
+            LogStore.add("وضعیت: متصل", "info", "app")
         } catch (e: Exception) {
             Log.e(TAG, "startVpn failed", e)
+            LogStore.add("خطا در راه‌اندازی: ${e.javaClass.simpleName}: ${e.message}", "fatal", "app")
             VpnState.update(VpnStatus.DISCONNECTED)
             stopVpn()
         }
@@ -76,9 +90,11 @@ class V2rayVpnService : VpnService() {
 
     private fun stopVpn() {
         runCatching { SingBoxBridge.stop() }
+            .onFailure { LogStore.add("توقف هسته با خطا: ${it.message}", "warn", "app") }
         runCatching { tunInterface?.close() }
         tunInterface = null
         VpnState.update(VpnStatus.DISCONNECTED)
+        LogStore.add("وضعیت: قطع", "info", "app")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -89,6 +105,7 @@ class V2rayVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        LogStore.add("مجوز VPN توسط سیستم لغو شد", "warn", "app")
         stopVpn()
         super.onRevoke()
     }
@@ -117,8 +134,11 @@ class V2rayVpnService : VpnService() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val b = if (Build.VERSION.SDK_INT >= 26)
-            Notification.Builder(this, CHANNEL_ID) else Notification.Builder(this)
+        val b = if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            Notification.Builder(this)
+        }
         return b.setContentTitle("V2ray Stk")
             .setContentText("سرویس VPN در حال اجراست")
             .setSmallIcon(applicationInfo.icon)

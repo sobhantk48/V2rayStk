@@ -6,6 +6,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.SystemClock
 import androidx.annotation.NonNull
+import com.example.v2ray_stk.vpn.CommandClientBridge
+import com.example.v2ray_stk.vpn.LogStore
 import com.example.v2ray_stk.vpn.SingBoxBridge
 import com.example.v2ray_stk.vpn.V2rayVpnService
 import com.example.v2ray_stk.vpn.VpnState
@@ -21,10 +23,12 @@ class MainActivity : FlutterActivity() {
 
     private val channelName = "com.v2ray.stk/vpn"
     private val eventChannelName = "com.v2ray.stk/vpn_status"
+    private val logChannelName = "com.v2ray.stk/logs"
     private val vpnPrepareRequestCode = 0x0f2c
 
     private var pendingConfig: String? = null
     private var eventSink: EventChannel.EventSink? = null
+    private var logSink: EventChannel.EventSink? = null
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -42,6 +46,11 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "getStats" -> result.success(buildStats())
+                    "getLogs" -> result.success(LogStore.snapshot())
+                    "clearLogs" -> {
+                        LogStore.clear()
+                        result.success(null)
+                    }
                     "testLatency" -> {
                         val host = call.argument<String>("host") ?: ""
                         val port = call.argument<Int>("port") ?: 443
@@ -67,29 +76,47 @@ class MainActivity : FlutterActivity() {
                     eventSink = null
                 }
             })
+
+        // استریم زندهٔ لاگ‌ها به صفحهٔ Log Viewer
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, logChannelName)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    logSink = events
+                    LogStore.setListener { entry ->
+                        runOnUiThread { logSink?.success(entry) }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    LogStore.setListener(null)
+                    logSink = null
+                }
+            })
     }
 
     /**
-     * آمار تونل. تا وقتی libbox اضافه نشده uploadTotal/downloadTotal صفر است
-     * و coreAvailable=false به Flutter می‌گوید مقادیر ترافیک معتبر نیستند.
+     * آمار تونل. اگر CommandClient به هسته وصل شده باشد مقادیر واقعی
+     * (uplink/downlink زنده) برمی‌گردد، در غیر این صورت شمارندهٔ محلی.
      */
     private fun buildStats(): Map<String, Any> {
         val t = VpnState.traffic
+        val live = CommandClientBridge.hasData
         return mapOf(
             "status" to VpnState.status,
             "coreAvailable" to SingBoxBridge.isCoreAvailable,
-            "uploadTotal" to t.uploadTotal,
-            "downloadTotal" to t.downloadTotal,
-            "uploadSpeed" to t.uploadSpeed,
-            "downloadSpeed" to t.downloadSpeed,
+            "liveStats" to live,
+            "uploadTotal" to if (live) CommandClientBridge.uplinkTotal else t.uploadTotal,
+            "downloadTotal" to if (live) CommandClientBridge.downlinkTotal else t.downloadTotal,
+            "uploadSpeed" to if (live) CommandClientBridge.uplink else t.uploadSpeed,
+            "downloadSpeed" to if (live) CommandClientBridge.downlink else t.downloadSpeed,
+            "memory" to CommandClientBridge.memory,
+            "goroutines" to CommandClientBridge.goroutines,
+            "connectionsIn" to CommandClientBridge.connectionsIn,
+            "connectionsOut" to CommandClientBridge.connectionsOut,
             "connectedSeconds" to VpnState.connectedSeconds()
         )
     }
 
-    /**
-     * پینگ واقعی با اندازه‌گیری زمان TCP handshake.
-     * روی ترد جداگانه اجرا می‌شود تا UI بلاک نشود؛ خروجی میلی‌ثانیه، و -1 در صورت شکست.
-     */
     private fun measureLatency(host: String, port: Int, timeoutMs: Int, result: MethodChannel.Result) {
         if (host.isBlank()) {
             result.success(-1)
@@ -139,6 +166,7 @@ class MainActivity : FlutterActivity() {
             if (resultCode == Activity.RESULT_OK) {
                 startVpnService(pendingConfig ?: "")
             } else {
+                LogStore.add("کاربر اجازهٔ VPN را نداد", "warn", "app")
                 VpnState.update(VpnStatus.DISCONNECTED)
             }
             pendingConfig = null
