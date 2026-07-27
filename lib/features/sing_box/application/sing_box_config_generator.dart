@@ -14,7 +14,8 @@ class SingBoxConfigGenerator {
   static const int tunMtu = 1500;
   static const String tunAddress = '172.19.0.1/30';
   static const String tunInterfaceName = 'tun0';
-  static const String dnsServerAddress = '8.8.8.8';
+  static const String dnsRemoteAddress = 'https://1.1.1.1/dns-query';
+  static const String dnsDirectAddress = '1.1.1.1';
 
   static const V2rayOutboundConverter _v2rayConverter =
       V2rayOutboundConverter();
@@ -110,13 +111,13 @@ class SingBoxConfigGenerator {
       'servers': <Map<String, dynamic>>[
         <String, dynamic>{
           'tag': 'dns-remote',
-          'address': dnsServerAddress,
+          'address': dnsRemoteAddress,
           'strategy': 'ipv4_only',
           'detour': proxyTag,
         },
         <String, dynamic>{
           'tag': 'dns-direct',
-          'address': dnsServerAddress,
+          'address': dnsDirectAddress,
           'strategy': 'ipv4_only',
           'detour': 'direct',
         },
@@ -130,6 +131,11 @@ class SingBoxConfigGenerator {
   List<Map<String, dynamic>> _dnsRules(String dnsTag) {
     return <Map<String, dynamic>>[
       <String, dynamic>{'protocol': 'dns', 'outbound': dnsTag},
+      <String, dynamic>{
+        'network': 'udp',
+        'port': <int>[443],
+        'outbound': 'block',
+      },
       <String, dynamic>{
         'port': <int>[53],
         'outbound': dnsTag,
