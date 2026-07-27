@@ -20,8 +20,8 @@ final Provider<VpnPlatformService> vpnPlatformServiceProvider =
 final Provider<SingBoxConfigGenerator> singBoxConfigGeneratorProvider =
     Provider<SingBoxConfigGenerator>((ref) => const SingBoxConfigGenerator());
 
-final NotifierProvider<VpnController, VpnConnectionState> vpnControllerProvider =
-    NotifierProvider<VpnController, VpnConnectionState>(
+final NotifierProvider<VpnController, VpnConnectionState>
+    vpnControllerProvider = NotifierProvider<VpnController, VpnConnectionState>(
   VpnController.new,
 );
 
@@ -65,7 +65,7 @@ class VpnController extends Notifier<VpnConnectionState> {
     final List<Profile> profiles = await ref.read(profilesProvider.future);
 
     if (profiles.isEmpty) {
-      throw SingBoxConfigException('No profile available to connect.');
+      throw const SingBoxConfigException('No profile available to connect.');
     }
 
     final Profile profile = profiles.firstWhere(

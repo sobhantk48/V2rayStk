@@ -80,9 +80,8 @@ class Strings {
   String get sectionPassword => fa ? 'رمز عبور' : 'Password';
 
   String get torRouting => fa ? 'مسیریابی Tor' : 'Tor routing';
-  String get torRoutingHint => fa
-      ? 'عبور ترافیک از شبکه Tor'
-      : 'Route traffic through the Tor network';
+  String get torRoutingHint =>
+      fa ? 'عبور ترافیک از شبکه Tor' : 'Route traffic through the Tor network';
   String get multiHop => fa ? 'مسیریابی چندهاپه' : 'Multi-hop routing';
   String get multiHopHint =>
       fa ? 'زنجیره‌کردن چند سرور' : 'Chain multiple servers';
@@ -97,7 +96,8 @@ class Strings {
       fa ? 'بهینه‌سازی باتری' : 'Battery optimization';
   String get trafficCompression =>
       fa ? 'فشرده‌سازی ترافیک' : 'Traffic compression';
-  String get lwo => fa ? 'مبهم‌سازی سبک WireGuard' : 'Lightweight WG obfuscation';
+  String get lwo =>
+      fa ? 'مبهم‌سازی سبک WireGuard' : 'Lightweight WG obfuscation';
   String get lwoHint => fa ? 'LWO' : 'LWO';
   String get nordLynx => fa ? 'پشتیبانی NordLynx' : 'NordLynx support';
 
@@ -122,9 +122,8 @@ class Strings {
   String get fragmentInterval => fa ? 'فاصله' : 'Interval';
 
   String get mtu => 'MTU';
-  String get autoConnectOnNetworkChange => fa
-      ? 'اتصال خودکار با تغییر شبکه'
-      : 'Auto-connect on network change';
+  String get autoConnectOnNetworkChange =>
+      fa ? 'اتصال خودکار با تغییر شبکه' : 'Auto-connect on network change';
   String get alwaysOnVpn => fa ? 'VPN همیشه‌روشن' : 'Always-on VPN';
 
   String get clashApi => fa ? 'Clash API' : 'Clash API';
@@ -138,9 +137,8 @@ class Strings {
       ? 'قطع کامل اینترنت هنگام افتادن VPN'
       : 'Block all traffic if the VPN drops';
   String get anonymousMode => fa ? 'حالت ناشناس' : 'Anonymous mode';
-  String get anonymousModeHint => fa
-      ? 'غیرفعال‌سازی لاگ و آمار محلی'
-      : 'Disable local logs and stats';
+  String get anonymousModeHint =>
+      fa ? 'غیرفعال‌سازی لاگ و آمار محلی' : 'Disable local logs and stats';
   String get biometricLock => fa ? 'قفل بیومتریک' : 'Biometric lock';
   String get firewall => fa ? 'فایروال داخلی' : 'Built-in firewall';
   String get blockAds => fa ? 'مسدودسازی تبلیغات' : 'Block ads';
@@ -154,9 +152,8 @@ class Strings {
       : 'Place the config or subscription QR inside the frame';
   String get torch => fa ? 'چراغ' : 'Torch';
   String get switchCamera => fa ? 'تغییر دوربین' : 'Switch camera';
-  String get cameraPermissionDenied => fa
-      ? 'دسترسی به دوربین داده نشده است'
-      : 'Camera permission denied';
+  String get cameraPermissionDenied =>
+      fa ? 'دسترسی به دوربین داده نشده است' : 'Camera permission denied';
   String get cameraError => fa ? 'خطای دوربین' : 'Camera error';
   String get invalidQr => fa ? 'QR نامعتبر است' : 'Invalid QR code';
   String get importedFromQr => fa ? 'از QR وارد شد' : 'Imported from QR';

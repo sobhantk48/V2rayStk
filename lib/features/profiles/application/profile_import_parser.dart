@@ -1,17 +1,21 @@
 import 'dart:convert';
 
-import '../../sing_box/application/v2ray_outbound_converter.dart';
 import '../domain/profile.dart';
 import '../domain/profile_type.dart';
 
+/// ورودی کاربر (URI یا JSON خام هسته) را به [Profile] تبدیل می‌کند.
 class ProfileImportParser {
-  static const V2rayOutboundConverter _converter = V2rayOutboundConverter();
+  const ProfileImportParser();
 
   Profile parse(String input) {
     final String value = input.trim();
 
-    if (value.startsWith('{')) {
-      return _parseJsonConfig(value);
+    if (value.isEmpty) {
+      return _fallback(value, 'Empty Profile');
+    }
+
+    if (_looksLikeJson(value)) {
+      return _parseJson(value);
     }
 
     if (value.startsWith('vmess://')) {
@@ -30,74 +34,120 @@ class ProfileImportParser {
       return _parseShadowsocks(value);
     }
 
-    if (value.startsWith('socks://') || value.startsWith('socks5://')) {
-      return _parseUriBased(value, ProfileType.socks);
-    }
-
-    if (value.startsWith('hysteria2://') || value.startsWith('hy2://')) {
-      return _parseUriBased(value, ProfileType.hysteria2);
-    }
-
-    if (value.startsWith('tuic://')) {
-      return _parseUriBased(value, ProfileType.tuic);
-    }
-
-    return Profile(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      name: 'Imported Profile',
-      server: '',
-      port: 0,
-      type: ProfileType.unknown,
-      rawConfig: value,
-      isActive: false,
-      createdAt: DateTime.now(),
-    );
+    return _fallback(value, 'Imported Profile');
   }
 
-  /// کانفیگ JSON خام (v2ray/Xray یا sing-box). محتوای اصلی دست‌نخورده
-  /// در rawConfig می‌ماند و مولد کانفیگ خودش آن را ترجمه می‌کند.
-  Profile _parseJsonConfig(String input) {
-    final Object? decoded = jsonDecode(input);
-    if (decoded is! Map) {
-      throw const FormatException('JSON config must be an object.');
+  bool _looksLikeJson(String value) {
+    if (!value.startsWith('{') || !value.endsWith('}')) {
+      return false;
     }
-
-    final Map<String, dynamic> json = Map<String, dynamic>.from(decoded);
-
-    String name = (json['remarks'] ?? json['ps'] ?? '').toString().trim();
-    String server = '';
-    int port = 0;
-    ProfileType type = ProfileType.unknown;
-
     try {
-      final Map<String, dynamic> outbound = _converter.pickOutbound(json);
-      type = _mapProtocol(
-        (outbound['protocol'] ?? outbound['type'] ?? '').toString(),
-      );
-      if (name.isEmpty) {
-        name = (outbound['tag'] ?? '').toString().trim();
-      }
-      server = _serverOf(outbound);
-      port = _portOf(outbound);
-    } catch (_) {
-      // اگر استخراج outbound ممکن نبود، پروفایل به عنوان JSON خام
-      // ذخیره می‌شود تا کاربر بتواند بعداً اصلاحش کند.
+      jsonDecode(value);
+      return true;
+    } on FormatException {
+      return false;
     }
-
-    return Profile(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      name: name.isEmpty ? 'JSON Config' : name,
-      server: server,
-      port: port,
-      type: type,
-      rawConfig: input,
-      isActive: false,
-      createdAt: DateTime.now(),
-    );
   }
 
+  /// JSON خام sing-box یا v2ray/Xray. اولین outbound معتبر برای
+  /// نمایش نام/سرور/پورت استخراج می‌شود و کل متن در rawConfig می‌ماند.
+  Profile _parseJson(String value) {
+    final Map<String, dynamic> root = jsonDecode(value) as Map<String, dynamic>;
+
+    final List<dynamic> outbounds =
+        (root['outbounds'] as List<dynamic>?) ?? const <dynamic>[];
+
+    for (final dynamic entry in outbounds) {
+      if (entry is! Map<String, dynamic>) {
+        continue;
+      }
+
+      final String protocol =
+          (entry['type'] ?? entry['protocol'] ?? '').toString();
+      final ProfileType type = _mapProtocol(protocol);
+
+      if (type == ProfileType.unknown) {
+        continue;
+      }
+
+      final String server = _readServer(entry);
+      final int port = _readPort(entry);
+
+      return Profile(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        name: (entry['tag'] as String?)?.trim().isNotEmpty == true
+            ? entry['tag'] as String
+            : protocol.toUpperCase(),
+        server: server,
+        port: port,
+        type: type,
+        rawConfig: value,
+        isActive: false,
+        createdAt: DateTime.now(),
+      );
+    }
+
+    return _fallback(value, 'JSON Profile');
+  }
+
+  String _readServer(Map<String, dynamic> outbound) {
+    final Object? direct = outbound['server'];
+    if (direct is String && direct.trim().isNotEmpty) {
+      return direct.trim();
+    }
+
+    final Object? settings = outbound['settings'];
+    if (settings is Map<String, dynamic>) {
+      final Object? vnext = settings['vnext'];
+      if (vnext is List<dynamic> && vnext.isNotEmpty) {
+        final dynamic first = vnext.first;
+        if (first is Map<String, dynamic>) {
+          return (first['address'] as String?)?.trim() ?? '';
+        }
+      }
+
+      final Object? servers = settings['servers'];
+      if (servers is List<dynamic> && servers.isNotEmpty) {
+        final dynamic first = servers.first;
+        if (first is Map<String, dynamic>) {
+          return (first['address'] as String?)?.trim() ?? '';
+        }
+      }
+    }
+
+    return '';
+  }
+
+  int _readPort(Map<String, dynamic> outbound) {
+    final int? direct = int.tryParse(
+      (outbound['server_port'] ?? outbound['port'] ?? '').toString(),
+    );
+    if (direct != null && direct > 0) {
+      return direct;
+    }
+
+    final Object? settings = outbound['settings'];
+    if (settings is Map<String, dynamic>) {
+      for (final String key in const <String>['vnext', 'servers']) {
+        final Object? list = settings[key];
+        if (list is List<dynamic> && list.isNotEmpty) {
+          final dynamic first = list.first;
+          if (first is Map<String, dynamic>) {
+            final int? port = int.tryParse(first['port']?.toString() ?? '');
+            if (port != null && port > 0) {
+              return port;
+            }
+          }
+        }
+      }
+    }
+
+    return 0;
+  }
+
+  /// نام پروتکل هسته را به [ProfileType] نگاشت می‌کند.
   ProfileType _mapProtocol(String protocol) {
-    switch (protocol.toLowerCase()) {
+    switch (protocol.trim().toLowerCase()) {
       case 'vmess':
         return ProfileType.vmess;
       case 'vless':
@@ -105,55 +155,11 @@ class ProfileImportParser {
       case 'trojan':
         return ProfileType.trojan;
       case 'shadowsocks':
-ನ      case 'ss':
+      case 'ss':
         return ProfileType.shadowsocks;
-      case 'socks':
-      case 'socks5':
-        return ProfileType.socks;
-      case 'http':
-      case 'https':
-        return ProfileType.http;
-      case 'wireguard':
-        return ProfileType.wireguard;
-      case 'hysteria2':
-        return ProfileType.hysteria2;
-      case 'tuic':
-        return ProfileType.tuic;
       default:
         return ProfileType.unknown;
     }
-  }
-
-  String _serverOf(Map<String, dynamic> outbound) {
-    if (outbound['server'] != null) {
-      return outbound['server'].toString();
-    }
-
-    final Object? settings = outbound['settings'];
-    if (settings is Map) {
-      final Object? node = settings['vnext'] ?? settings['servers'];
-      if (node is List && node.isNotEmpty && node.first is Map) {
-        return ((node.first as Map)['address'] ?? '').toString();
-      }
-    }
-
-    return '';
-  }
-
-  int _portOf(Map<String, dynamic> outbound) {
-    if (outbound['server_port'] != null) {
-      return int.tryParse(outbound['server_port'].toString()) ?? 0;
-    }
-
-    final Object? settings = outbound['settings'];
-    if (settings is Map) {
-      final Object? node = settings['vnext'] ?? settings['servers'];
-      if (node is List && node.isNotEmpty && node.first is Map) {
-        return int.tryParse(((node.first as Map)['port'] ?? '').toString()) ?? 0;
-      }
-    }
-
-    return 0;
   }
 
   Profile _parseVmess(String input) {
@@ -200,6 +206,19 @@ class ProfileImportParser {
       port: uri.port,
       type: ProfileType.shadowsocks,
       rawConfig: input,
+      isActive: false,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  Profile _fallback(String value, String name) {
+    return Profile(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name,
+      server: '',
+      port: 0,
+      type: ProfileType.unknown,
+      rawConfig: value,
       isActive: false,
       createdAt: DateTime.now(),
     );

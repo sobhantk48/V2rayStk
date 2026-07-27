@@ -439,8 +439,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               child: Text(strings.cancel),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text),
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
               child: Text(strings.save),
             ),
           ],

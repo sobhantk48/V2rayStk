@@ -31,9 +31,8 @@ class LocalStorageService {
     String key,
     List<Map<String, dynamic>> items,
   ) async {
-    final List<String> rawItems = items
-        .map((Map<String, dynamic> item) => jsonEncode(item))
-        .toList();
+    final List<String> rawItems =
+        items.map((Map<String, dynamic> item) => jsonEncode(item)).toList();
     await _preferences.setStringList(key, rawItems);
   }
 

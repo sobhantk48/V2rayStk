@@ -79,9 +79,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
         title: Text(_t('لاگ‌ها', 'Logs')),
         actions: <Widget>[
           IconButton(
-            tooltip: state.paused
-                ? _t('ادامه', 'Resume')
-                : _t('توقف موقت', 'Pause'),
+            tooltip:
+                state.paused ? _t('ادامه', 'Resume') : _t('توقف موقت', 'Pause'),
             icon: Icon(state.paused ? Icons.play_arrow : Icons.pause),
             onPressed: controller.togglePause,
           ),

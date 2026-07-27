@@ -19,8 +19,9 @@ class V2rayOutboundConverter {
     required String tag,
   }) {
     final Map<String, dynamic> outbound = pickOutbound(source);
-    final String protocol =
-        (outbound['protocol'] ?? outbound['type'] ?? '').toString().toLowerCase();
+    final String protocol = (outbound['protocol'] ?? outbound['type'] ?? '')
+        .toString()
+        .toLowerCase();
     final Map<String, dynamic> settings = _asMap(outbound['settings']);
     final Map<String, dynamic> stream = _asMap(outbound['streamSettings']);
 
@@ -71,7 +72,8 @@ class V2rayOutboundConverter {
       return source;
     }
 
-    throw SingBoxConfigException('No usable outbound found in JSON config.');
+    throw const SingBoxConfigException(
+        'No usable outbound found in JSON config.');
   }
 
   // ---------------------------------------------------------------- protocols
@@ -187,10 +189,12 @@ class V2rayOutboundConverter {
     if (users is List && users.isNotEmpty && users.first is Map) {
       final Map<String, dynamic> user =
           Map<String, dynamic>.from(users.first as Map);
-      final String username = (user['user'] ?? user['username'] ?? '').toString();
+      final String username =
+          (user['user'] ?? user['username'] ?? '').toString();
       if (username.isNotEmpty) {
         outbound['username'] = username;
-        outbound['password'] = (user['pass'] ?? user['password'] ?? '').toString();
+        outbound['password'] =
+            (user['pass'] ?? user['password'] ?? '').toString();
       }
     }
 
@@ -199,7 +203,8 @@ class V2rayOutboundConverter {
 
   // ------------------------------------------------------------------ stream
 
-  void _applyStream(Map<String, dynamic> outbound, Map<String, dynamic> stream) {
+  void _applyStream(
+      Map<String, dynamic> outbound, Map<String, dynamic> stream) {
     if (stream.isEmpty) {
       return;
     }
@@ -240,7 +245,8 @@ class V2rayOutboundConverter {
       tls['server_name'] = serverName;
     }
 
-    if (source['allowInsecure'] == true || tlsSettings['allowInsecure'] == true) {
+    if (source['allowInsecure'] == true ||
+        tlsSettings['allowInsecure'] == true) {
       tls['insecure'] = true;
     }
 

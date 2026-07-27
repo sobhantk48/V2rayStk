@@ -78,7 +78,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               onTap: () => _toggle(state),
             ),
             const SizedBox(height: 28),
-            _StatGrid(stats: stats, strings: s, active: state == VpnConnectionState.connected),
+            _StatGrid(
+                stats: stats,
+                strings: s,
+                active: state == VpnConnectionState.connected),
           ],
         ),
       ),
@@ -165,7 +168,8 @@ class _ConnectButton extends StatelessWidget {
                   ),
                 )
               else
-                const Icon(Icons.power_settings_new, size: 56, color: Colors.white),
+                const Icon(Icons.power_settings_new,
+                    size: 56, color: Colors.white),
               const SizedBox(height: 12),
               Text(
                 label,
@@ -209,7 +213,8 @@ class _StatGrid extends StatelessWidget {
       value /= 1024;
       unit++;
     }
-    final String text = '${value.toStringAsFixed(unit == 0 ? 0 : 1)} ${units[unit]}';
+    final String text =
+        '${value.toStringAsFixed(unit == 0 ? 0 : 1)} ${units[unit]}';
     return perSecond ? '$text/s' : text;
   }
 
@@ -237,7 +242,8 @@ class _StatGrid extends StatelessWidget {
         _StatCard(
           icon: Icons.download_outlined,
           title: strings.download,
-          value: active ? formatBytes(stats.downloadBps, perSecond: true) : dash,
+          value:
+              active ? formatBytes(stats.downloadBps, perSecond: true) : dash,
         ),
         _StatCard(
           icon: Icons.upload_outlined,

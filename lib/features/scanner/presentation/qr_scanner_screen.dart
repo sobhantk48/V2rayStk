@@ -90,9 +90,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               Widget? child,
             ) {
               return _ScannerError(
-                message: error.errorCode == MobileScannerErrorCode.permissionDenied
-                    ? strings.cameraPermissionDenied
-                    : strings.cameraError,
+                message:
+                    error.errorCode == MobileScannerErrorCode.permissionDenied
+                        ? strings.cameraPermissionDenied
+                        : strings.cameraError,
               );
             },
           ),

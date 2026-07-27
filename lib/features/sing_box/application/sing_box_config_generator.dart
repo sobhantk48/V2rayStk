@@ -16,7 +16,8 @@ class SingBoxConfigGenerator {
   static const String tunInterfaceName = 'tun0';
   static const String dnsServerAddress = '8.8.8.8';
 
-  static const V2rayOutboundConverter _v2rayConverter = V2rayOutboundConverter();
+  static const V2rayOutboundConverter _v2rayConverter =
+      V2rayOutboundConverter();
 
   static const Set<String> _helperOutboundTypes = <String>{
     'direct',
@@ -124,8 +125,9 @@ class SingBoxConfigGenerator {
   }
 
   Map<String, dynamic> _experimental(Map<String, dynamic>? existing) {
-    final Map<String, dynamic> result =
-        existing == null ? <String, dynamic>{} : Map<String, dynamic>.from(existing);
+    final Map<String, dynamic> result = existing == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(existing);
 
     final Map<String, dynamic> cache = result['cache_file'] is Map
         ? Map<String, dynamic>.from(result['cache_file'] as Map)
@@ -174,7 +176,7 @@ class SingBoxConfigGenerator {
     ];
 
     if (outbounds.isEmpty) {
-      throw SingBoxConfigException('sing-box config has no outbounds.');
+      throw const SingBoxConfigException('sing-box config has no outbounds.');
     }
 
     final Set<String> tags = outbounds
@@ -371,7 +373,8 @@ class SingBoxConfigGenerator {
     final String publicKey = (uri.queryParameters['pbk'] ?? '').trim();
     final String shortId = (uri.queryParameters['sid'] ?? '').trim();
     final String fingerprint = (uri.queryParameters['fp'] ?? '').trim();
-    final String serviceName = (uri.queryParameters['serviceName'] ?? '').trim();
+    final String serviceName =
+        (uri.queryParameters['serviceName'] ?? '').trim();
 
     _require(uri.host.isNotEmpty, 'VLESS server is missing.');
     _require(uri.port > 0, 'VLESS port is invalid.');
@@ -567,8 +570,7 @@ class SingBoxConfigGenerator {
   }
 
   String _safeTag(Profile profile) {
-    final String base =
-        profile.name.trim().isEmpty ? profile.id : profile.name;
+    final String base = profile.name.trim().isEmpty ? profile.id : profile.name;
     return base.replaceAll(RegExp(r'\s+'), '_');
   }
 
