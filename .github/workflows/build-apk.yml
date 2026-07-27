@@ -7,103 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  SING_BOX_REF: v1.10.7
-  BUILD_TAGS: with_gvisor,with_quic,with_wireguard,with_utls,with_clash_api
-  GOMOBILE_VERSION: v0.1.4
-  GO_VERSION: "1.23.4"
   FLUTTER_VERSION: "3.35.5"
-  NDK_VERSION: r27c
 
 jobs:
-  libbox:
-    name: Build libbox.aar
-    runs-on: ubuntu-latest
-    steps:
-      - name: Compute cache key
-        id: meta
-        run: |
-          set -euo pipefail
-          TAGS_SLUG="$(echo "${BUILD_TAGS}" | tr ',' '-')"
-          echo "key=libbox-${SING_BOX_REF}-${NDK_VERSION}-${GOMOBILE_VERSION}-${TAGS_SLUG}" >> "$GITHUB_OUTPUT"
-
-      - name: Restore cached AAR
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: libbox-out
-          key: ${{ steps.meta.outputs.key }}
-
-      - name: Checkout sing-box
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: SagerNet/sing-box
-          ref: ${{ env.SING_BOX_REF }}
-          path: sing-box
-          fetch-depth: 1
-
-      - name: Setup Java 17
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Go
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: sing-box/go.sum
-
-      - name: Setup Android NDK
-        if: steps.cache.outputs.cache-hit != 'true'
-        id: ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: ${{ env.NDK_VERSION }}
-          add-to-path: false
-
-      - name: Install sagernet gomobile
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          go install -v github.com/sagernet/gomobile/cmd/gomobile@${GOMOBILE_VERSION}
-          go install -v github.com/sagernet/gomobile/cmd/gobind@${GOMOBILE_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: gomobile bind
-        if: steps.cache.outputs.cache-hit != 'true'
-        working-directory: sing-box
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-        run: |
-          set -euo pipefail
-          gomobile init
-          gomobile bind -v \
-            -target=android/arm64,android/arm \
-            -androidapi 21 \
-            -javapkg=io.nekohasekai \
-            -libname=box \
-            -tags "${BUILD_TAGS}" \
-            -trimpath -ldflags "-s -w -buildid=" \
-            -o libbox.aar \
-            ./experimental/libbox
-          mkdir -p ../libbox-out
-          mv libbox.aar ../libbox-out/libbox.aar
-
-      - name: Upload AAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: libbox-aar
-          path: libbox-out/libbox.aar
-          if-no-files-found: error
-          retention-days: 7
-
   apk:
     name: Build Flutter APK
-    needs: libbox
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -121,26 +29,24 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Clean stale AAR copies
+      - name: Verify AAR in repo
         run: |
           set -euo pipefail
-          rm -rf android/app/libs
-          mkdir -p android/app/libs
-
-      - name: Download libbox.aar
-        uses: actions/download-artifact@v4
-        with:
-          name: libbox-aar
-          path: android/app/libs
-
-      - name: Verify AAR present
-        run: |
-          set -euo pipefail
-          ls -lh android/app/libs
-          test -f android/app/libs/libbox.aar
-          COUNT="$(find android/app/libs -name '*.aar' | wc -l)"
-          echo "aar count = $COUNT"
-          test "$COUNT" -eq 1
+          echo "--- android/app/libs ---"
+          ls -lh android/app/libs || true
+          echo "--- tracked by git ---"
+          git ls-files android/app/libs
+          count=$(find android/app/libs -maxdepth 1 -name '*.aar' | wc -l)
+          echo "aar count = $count"
+          if [ ! -f android/app/libs/libbox.aar ]; then
+            echo "::error::android/app/libs/libbox.aar is missing. Commit it with: git add -f android/app/libs/libbox.aar"
+            exit 1
+          fi
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly 1 aar in android/app/libs, found $count (duplicates cause duplicate-class dex errors)"
+            exit 1
+          fi
+          unzip -l android/app/libs/libbox.aar | head -n 30
 
       - name: flutter pub get
         run: flutter pub get
@@ -149,20 +55,27 @@ jobs:
         run: flutter analyze --no-fatal-infos || true
 
       - name: Build release APKs
+        id: build
         run: |
           set -euo pipefail
+          set +e
           flutter build apk --release \
             --split-per-abi \
             --target-platform android-arm,android-arm64 \
             --verbose 2>&1 | tee build-log.txt
+          status=${PIPESTATUS[0]}
+          echo "build exit code: $status"
+          exit $status
 
       - name: Show build errors
-        if: always()
+        if: failure()
         run: |
-          echo "--- last 150 lines ---"
-          tail -n 150 build-log.txt || true
-          echo "--- error grep ---"
-          grep -nEi "error|exception|failed|what went wrong|caused by" build-log.txt | tail -n 80 || true
+          echo "=================== ERROR GREP ==================="
+          grep -nE "FAILURE:|BUILD FAILED|What went wrong|Caused by|error:|Error:|Exception|Unresolved reference|duplicate class|Conflicting configuration|AAPT|Execution failed" build-log.txt | tail -n 80 || echo "no matches"
+          echo "=================== LAST 250 LINES ==================="
+          tail -n 250 build-log.txt || echo "no build-log.txt"
+          echo "=================== GRADLE DAEMON LOGS ==================="
+          find ~/.gradle/daemon -name '*.log' -exec tail -n 60 {} \; 2>/dev/null || true
 
       - name: Upload build log
         if: always()
@@ -173,7 +86,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Locate every produced APK
+      - name: Locate produced APKs
         if: always()
         run: |
           echo "--- flutter-apk dir ---"
@@ -182,6 +95,7 @@ jobs:
           find . -name "*.apk" -not -path "./.git/*" -printf "%p  %kKB\n" || true
 
       - name: Upload APKs
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: V2rayStk-release-apks
@@ -189,4 +103,4 @@ jobs:
             build/app/outputs/flutter-apk/*-release.apk
             build/app/outputs/apk/release/*.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
