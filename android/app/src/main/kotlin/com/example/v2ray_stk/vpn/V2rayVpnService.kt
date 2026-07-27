@@ -29,7 +29,6 @@ class V2rayVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
-            LogStore.add("درخواست قطع اتصال", "info", "app")
             stopVpn()
             return START_NOT_STICKY
         }
@@ -40,17 +39,9 @@ class V2rayVpnService : VpnService() {
     private fun startVpn(config: String) {
         startForegroundSafely()
         VpnState.update(VpnStatus.CONNECTING)
-        LogStore.add("شروع اتصال... (طول کانفیگ: ${config.length})", "info", "app")
-
-        if (!SingBoxBridge.isCoreAvailable) {
-            LogStore.add("libbox موجود نیست؛ tun ساخته نمی‌شود", "fatal", "app")
-            VpnState.update(VpnStatus.DISCONNECTED)
-            stopVpn()
-            return
-        }
 
         if (config.isBlank()) {
-            LogStore.add("کانفیگ خالی است؛ اتصال لغو شد", "error", "app")
+            Log.e(TAG, "config خالی است")
             VpnState.update(VpnStatus.DISCONNECTED)
             stopVpn()
             return
@@ -59,43 +50,46 @@ class V2rayVpnService : VpnService() {
         try {
             val tun = establishTun()
             if (tun == null) {
-                LogStore.add("ساخت TUN ناموفق بود (establish برگشت null)", "error", "app")
+                Log.e(TAG, "establish() برگشت null (اجازه VPN صادر نشده؟)")
                 VpnState.update(VpnStatus.DISCONNECTED)
                 stopVpn()
                 return
             }
             tunInterface = tun
-            LogStore.add("TUN ساخته شد، fd=${tun.fd}", "info", "app")
-
             SingBoxBridge.start(this, tun.fd, config)
             VpnState.update(VpnStatus.CONNECTED)
-            LogStore.add("وضعیت: متصل", "info", "app")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "startVpn failed", e)
-            LogStore.add("خطا در راه‌اندازی: ${e.javaClass.simpleName}: ${e.message}", "fatal", "app")
             VpnState.update(VpnStatus.DISCONNECTED)
             stopVpn()
         }
     }
 
     private fun establishTun(): ParcelFileDescriptor? {
-        return Builder()
+        val builder = Builder()
             .setSession("V2ray Stk")
-            .setMtu(9000)
+            .setMtu(1500)
             .addAddress("172.19.0.1", 30)
-            .addDnsServer("8.8.8.8")
             .addRoute("0.0.0.0", 0)
-            .establish()
+            .addDnsServer("1.1.1.1")
+            .addDnsServer("8.8.8.8")
+
+        if (Build.VERSION.SDK_INT >= 29) {
+            builder.setMetered(false)
+        }
+
+        // خود اپ از تونل خارج شود تا حلقه ترافیکی ایجاد نشود
+        runCatching { builder.addDisallowedApplication(packageName) }
+
+        return builder.establish()
     }
 
     private fun stopVpn() {
         runCatching { SingBoxBridge.stop() }
-            .onFailure { LogStore.add("توقف هسته با خطا: ${it.message}", "warn", "app") }
         runCatching { tunInterface?.close() }
         tunInterface = null
         VpnState.update(VpnStatus.DISCONNECTED)
-        LogStore.add("وضعیت: قطع", "info", "app")
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         stopSelf()
     }
 
@@ -105,7 +99,6 @@ class V2rayVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        LogStore.add("مجوز VPN توسط سیستم لغو شد", "warn", "app")
         stopVpn()
         super.onRevoke()
     }
@@ -114,7 +107,11 @@ class V2rayVpnService : VpnService() {
         createChannel()
         val n = buildNotification()
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(
+                NOTIFICATION_ID,
+                n,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
         } else {
             startForeground(NOTIFICATION_ID, n)
         }
@@ -122,26 +119,42 @@ class V2rayVpnService : VpnService() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val nm =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "VPN", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "VPN",
+                    NotificationManager.IMPORTANCE_LOW
+                )
             )
         }
     }
 
     private fun buildNotification(): Notification {
-        val pi = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+        val flags = if (Build.VERSION.SDK_INT >= 23) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pi = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            flags
         )
-        val b = if (Build.VERSION.SDK_INT >= 26) {
+
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
+            @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
-        return b.setContentTitle("V2ray Stk")
-            .setContentText("سرویس VPN در حال اجراست")
-            .setSmallIcon(applicationInfo.icon)
+
+        return builder
+            .setContentTitle("V2ray Stk")
+            .setContentText("در حال اجرا")
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentIntent(pi)
             .setOngoing(true)
             .build()
