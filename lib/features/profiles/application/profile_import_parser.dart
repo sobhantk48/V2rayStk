@@ -3,27 +3,46 @@ import 'dart:convert';
 import '../domain/profile.dart';
 import '../domain/profile_type.dart';
 
-/// ورودی کاربر (URI، لینک اشتراک یا JSON خام هسته) را به [Profile] تبدیل می‌کند.
+/// ورودی کاربر (URI یا JSON خام هسته) را به [Profile] تبدیل می‌کند.
 ///
-/// پشتیبانی از ۱۶ پروتکل:
-/// vless, vmess, trojan, shadowsocks, hysteria2, tuic, wireguard, shadowtls,
-/// anytls, naive, tor, ssh, socks, http, hysteria, vless+reality
+/// پشتیبانی: هر ۱۶ پروتکل مصوب پروژه، هم از طریق scheme لینک و هم از
+/// طریق فیلد `type`/`protocol` در JSON هسته (sing-box / v2ray / Xray).
 class ProfileImportParser {
   const ProfileImportParser();
 
-  /// شمارنده برای تولید شناسه یکتا حتی در واردات انبوه (چند لینک در یک میلی‌ثانیه).
-  static int _seq = 0;
-
-  static final RegExp _authority = RegExp(
-    r'^(?<scheme>[A-Za-z][A-Za-z0-9+.\-]*)://'
-    r'(?:(?<userinfo>[^@/?#]*)@)?'
-    r'(?<host>\[[^\]]+\]|[^:/?#]*)'
-    r'(?::(?<port>\d+))?',
-  );
-
-  // ---------------------------------------------------------------------------
-  // API عمومی
-  // ---------------------------------------------------------------------------
+  /// نگاشت scheme لینک به نوع پروفایل.
+  ///
+  /// ترتیب مهم است: کلیدهای طولانی‌تر (مثل `hysteria2`) باید قبل از
+  /// کلیدهای کوتاه‌تر (مثل `hysteria`) بررسی شوند، وگرنه `hysteria2://`
+  /// به‌اشتباه Hysteria نسخه ۱ تشخیص داده می‌شود.
+  static const List<(String, ProfileType)> _schemeMap = <(String, ProfileType)>[
+    ('vmess', ProfileType.vmess),
+    ('vless', ProfileType.vless),
+    ('trojan', ProfileType.trojan),
+    ('trojan-go', ProfileType.trojan),
+    ('ss', ProfileType.shadowsocks),
+    ('shadowsocks', ProfileType.shadowsocks),
+    ('hysteria2', ProfileType.hysteria2),
+    ('hy2', ProfileType.hysteria2),
+    ('hysteria', ProfileType.hysteria),
+    ('hy', ProfileType.hysteria),
+    ('tuic', ProfileType.tuic),
+    ('wireguard', ProfileType.wireguard),
+    ('wg', ProfileType.wireguard),
+    ('shadowtls', ProfileType.shadowtls),
+    ('anytls', ProfileType.anytls),
+    ('naive+https', ProfileType.naive),
+    ('naive+quic', ProfileType.naive),
+    ('naive', ProfileType.naive),
+    ('tor', ProfileType.tor),
+    ('ssh', ProfileType.ssh),
+    ('socks5', ProfileType.socks),
+    ('socks4', ProfileType.socks),
+    ('socks4a', ProfileType.socks),
+    ('socks', ProfileType.socks),
+    ('http', ProfileType.http),
+    ('https', ProfileType.http),
+  ];
 
   Profile parse(String input) {
     final String value = input.trim();
@@ -36,79 +55,26 @@ class ProfileImportParser {
       return _parseJson(value);
     }
 
-    final String scheme = _schemeOf(value);
+    // vmess معمولاً payload بیس۶۴ دارد و مسیر جداگانه‌ای می‌خواهد.
+    if (_hasScheme(value, 'vmess')) {
+      return _parseVmess(value);
+    }
 
-    switch (scheme) {
-      case 'vmess':
-        return _parseVmess(value);
-      case 'ss':
-      case 'shadowsocks':
-        return _parseShadowsocks(value);
-      case '':
-        return _fallback(value, 'Imported Profile');
-      default:
-        final ProfileType type = ProfileTypeX.fromUri(value);
-        if (type == ProfileType.unknown) {
-          return _fallback(value, 'Imported Profile');
-        }
+    if (_hasScheme(value, 'ss') || _hasScheme(value, 'shadowsocks')) {
+      return _parseShadowsocks(value);
+    }
+
+    for (final (String scheme, ProfileType type) in _schemeMap) {
+      if (_hasScheme(value, scheme)) {
         return _parseUriBased(value, type);
+      }
     }
+
+    return _fallback(value, 'Imported Profile');
   }
 
-  /// واردات انبوه: چند لینک در چند خط، یا بدنهٔ Base64 یک لینک اشتراک.
-  List<Profile> parseMany(String input) {
-    final String value = input.trim();
-    if (value.isEmpty) {
-      return const <Profile>[];
-    }
-
-    if (_looksLikeJson(value)) {
-      return <Profile>[_parseJson(value)];
-    }
-
-    final String expanded = _maybeDecodeSubscription(value);
-    final List<Profile> result = <Profile>[];
-
-    for (final String line in expanded.split(RegExp(r'[\r\n]+'))) {
-      final String candidate = line.trim();
-      if (candidate.isEmpty ||
-          candidate.startsWith('#') ||
-          candidate.startsWith('//')) {
-        continue;
-      }
-
-      final Profile profile = parse(candidate);
-      final bool useless = profile.type == ProfileType.unknown &&
-          (profile.server == null || profile.server!.isEmpty);
-      if (useless) {
-        continue;
-      }
-      result.add(profile);
-    }
-
-    return result;
-  }
-
-  /// بدنهٔ اشتراک اغلب Base64 است؛ اگر بود باز می‌شود.
-  String _maybeDecodeSubscription(String value) {
-    if (value.contains('://')) {
-      return value;
-    }
-
-    final String compact = value.replaceAll(RegExp(r'\s'), '');
-    if (compact.length < 8 || !RegExp(r'^[A-Za-z0-9+/_=-]+$').hasMatch(compact)) {
-      return value;
-    }
-
-    try {
-      final String decoded = utf8.decode(
-        base64Decode(base64.normalize(compact.replaceAll('-', '+').replaceAll('_', '/'))),
-        allowMalformed: true,
-      );
-      return decoded.contains('://') ? decoded : value;
-    } catch (_) {
-      return value;
-    }
+  bool _hasScheme(String value, String scheme) {
+    return value.toLowerCase().startsWith('$scheme://');
   }
 
   bool _looksLikeJson(String value) {
@@ -123,29 +89,25 @@ class ProfileImportParser {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // JSON خام (sing-box / v2ray / Xray)
-  // ---------------------------------------------------------------------------
-
-  /// JSON خام sing-box یا v2ray/Xray. اولین outbound معتبر برای
+  /// JSON خام sing-box یا v2ray/Xray. اولین outbound/endpoint معتبر برای
   /// نمایش نام/سرور/پورت استخراج می‌شود و کل متن در rawConfig می‌ماند.
   Profile _parseJson(String value) {
     final Map<String, dynamic> root = jsonDecode(value) as Map<String, dynamic>;
 
-    final List<dynamic> candidates = <dynamic>[
+    // در sing-box 1.11+ پروتکل‌هایی مثل wireguard زیر endpoints می‌آیند.
+    final List<dynamic> entries = <dynamic>[
       ...((root['outbounds'] as List<dynamic>?) ?? const <dynamic>[]),
-      // sing-box 1.13+: WireGuard زیر endpoints می‌آید.
       ...((root['endpoints'] as List<dynamic>?) ?? const <dynamic>[]),
     ];
 
-    for (final dynamic entry in candidates) {
+    for (final dynamic entry in entries) {
       if (entry is! Map<String, dynamic>) {
         continue;
       }
 
       final String protocol =
           (entry['type'] ?? entry['protocol'] ?? '').toString();
-      final ProfileType type = _mapProtocol(protocol);
+      final ProfileType type = _mapProtocol(protocol, entry);
 
       if (type == ProfileType.unknown) {
         continue;
@@ -155,7 +117,7 @@ class ProfileImportParser {
       final int port = _readPort(entry);
 
       return Profile(
-        id: _nextId(),
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
         name: (entry['tag'] as String?)?.trim().isNotEmpty == true
             ? entry['tag'] as String
             : protocol.toUpperCase(),
@@ -177,14 +139,14 @@ class ProfileImportParser {
       return direct.trim();
     }
 
-    // WireGuard در قالب endpoints: peers[0].address
+    // wireguard در sing-box آدرس را داخل peers نگه می‌دارد.
     final Object? peers = outbound['peers'];
     if (peers is List<dynamic> && peers.isNotEmpty) {
       final dynamic first = peers.first;
       if (first is Map<String, dynamic>) {
-        final String address = (first['address'] as String?)?.trim() ?? '';
-        if (address.isNotEmpty) {
-          return address;
+        final Object? address = first['address'] ?? first['server'];
+        if (address is String && address.trim().isNotEmpty) {
+          return address.trim();
         }
       }
     }
@@ -212,17 +174,20 @@ class ProfileImportParser {
   }
 
   int _readPort(Map<String, dynamic> outbound) {
-    final Object? direct = outbound['server_port'] ?? outbound['port'];
-    final int? directPort = int.tryParse(direct?.toString() ?? '');
-    if (directPort != null && directPort > 0) {
-      return directPort;
+    final int? direct = int.tryParse(
+      (outbound['server_port'] ?? outbound['port'] ?? '').toString(),
+    );
+    if (direct != null && direct > 0) {
+      return direct;
     }
 
     final Object? peers = outbound['peers'];
     if (peers is List<dynamic> && peers.isNotEmpty) {
       final dynamic first = peers.first;
       if (first is Map<String, dynamic>) {
-        final int? peerPort = int.tryParse(first['port']?.toString() ?? '');
+        final int? peerPort = int.tryParse(
+          (first['server_port'] ?? first['port'] ?? '').toString(),
+        );
         if (peerPort != null && peerPort > 0) {
           return peerPort;
         }
@@ -250,287 +215,208 @@ class ProfileImportParser {
 
   /// نام پروتکل هسته را به [ProfileType] نگاشت می‌کند.
   ///
-  /// ابتدا نام‌های مستعار رایج نرمال می‌شوند، سپس تصمیم به
-  /// [ProfileTypeX.fromName] سپرده می‌شود تا با تغییر enum همگام بماند.
-  ProfileType _mapProtocol(String protocol) {
-    final String raw = protocol.trim().toLowerCase();
-
-    const Set<String> ignored = <String>{
-      '',
-      'direct',
-      'block',
-      'dns',
-      'selector',
-      'urltest',
-      'freedom',
-      'blackhole',
-      'dokodemo-door',
-      'tun',
-      'mixed',
-      'redirect',
-      'tproxy',
-    };
-    if (ignored.contains(raw)) {
-      return ProfileType.unknown;
-    }
-
-    const Map<String, String> aliases = <String, String>{
-      'ss': 'shadowsocks',
-      'shadowsocksr': 'shadowsocks',
-      'ssr': 'shadowsocks',
-      'hy': 'hysteria',
-      'hy2': 'hysteria2',
-      'socks4': 'socks',
-      'socks4a': 'socks',
-      'socks5': 'socks',
-      'https': 'http',
-      'wg': 'wireguard',
-      'nordlynx': 'wireguard',
-      'naiveproxy': 'naive',
-      'naive+https': 'naive',
-      'shadow-tls': 'shadowtls',
-      'any-tls': 'anytls',
-    };
-
-    return ProfileTypeX.fromName(aliases[raw] ?? raw);
-  }
-
-  // ---------------------------------------------------------------------------
-  // URI ها
-  // ---------------------------------------------------------------------------
-
-  /// VMess دو فرمت دارد: Base64 از JSON (فرمت v2rayN) و URI استاندارد.
-  Profile _parseVmess(String input) {
-    final String payload = input.substring(input.indexOf('://') + 3);
-    final String body = payload.split('#').first.split('?').first;
-
-    try {
-      final Object? decoded = jsonDecode(
-        utf8.decode(base64Decode(base64.normalize(
-          body.replaceAll('-', '+').replaceAll('_', '/'),
-        ))),
-      );
-
-      if (decoded is Map<String, dynamic>) {
-        final String name = (decoded['ps'] as Object?)?.toString().trim() ?? '';
-        return Profile(
-          id: _nextId(),
-          name: name.isEmpty ? 'VMess' : name,
-          server: (decoded['add'] as Object?)?.toString().trim() ?? '',
-          port: int.tryParse(decoded['port']?.toString() ?? '') ?? 0,
-          type: ProfileTypeX.fromName('vmess'),
-          rawConfig: input,
-          isActive: false,
-          createdAt: DateTime.now(),
-        );
-      }
-    } catch (_) {
-      // به فرمت URI برمی‌گردیم.
-    }
-
-    return _parseUriBased(input, ProfileTypeX.fromName('vmess'));
-  }
-
-  /// Shadowsocks: هم SIP002 (`ss://base64(method:pass)@host:port`)
-  /// و هم فرمت قدیمی (`ss://base64(method:pass@host:port)`).
-  Profile _parseShadowsocks(String input) {
-    final ProfileType type = ProfileTypeX.fromName('shadowsocks');
-
-    String body = input.substring(input.indexOf('://') + 3);
-    String name = '';
-
-    final int hash = body.indexOf('#');
-    if (hash >= 0) {
-      name = _decode(body.substring(hash + 1));
-      body = body.substring(0, hash);
-    }
-
-    final int query = body.indexOf('?');
-    if (query >= 0) {
-      body = body.substring(0, query);
-    }
-
-    if (!body.contains('@')) {
-      try {
-        body = utf8.decode(base64Decode(base64.normalize(
-          body.replaceAll('-', '+').replaceAll('_', '/'),
-        )));
-      } catch (_) {
-        // همان مقدار خام می‌ماند.
-      }
-    }
-
-    final int at = body.lastIndexOf('@');
-    final _HostPort hostPort = _splitHostPort(at >= 0 ? body.substring(at + 1) : body);
-
-    return Profile(
-      id: _nextId(),
-      name: name.isEmpty ? 'Shadowsocks' : name,
-      server: hostPort.host,
-      port: hostPort.port,
-      type: type,
-      rawConfig: input,
-      isActive: false,
-      createdAt: DateTime.now(),
-    );
-  }
-
-  /// پارسر عمومی برای بقیهٔ پروتکل‌ها؛ با regex کار می‌کند تا کاراکترهای
-  /// خاص در userinfo (رمزهای Trojan/TUIC/AnyTLS) پارس را نشکنند.
-  Profile _parseUriBased(String input, ProfileType type) {
-    final RegExpMatch? match = _authority.firstMatch(input);
-
-    String host = match?.namedGroup('host') ?? '';
-    if (host.startsWith('[') && host.endsWith(']')) {
-      host = host.substring(1, host.length - 1);
-    }
-
-    int port = int.tryParse(match?.namedGroup('port') ?? '') ?? 0;
-    if (port <= 0) {
-      port = _defaultPort(_schemeOf(input));
-    }
-
-    return Profile(
-      id: _nextId(),
-      name: _readName(input, type),
-      server: host,
-      port: port,
-      type: type,
-      rawConfig: input,
-      isActive: false,
-      createdAt: DateTime.now(),
-    );
-  }
-
-  /// نام نمایشی: اول fragment، بعد پارامترهای رایج، در نهایت نام پروتکل.
-  String _readName(String input, ProfileType type) {
-    final int hash = input.indexOf('#');
-    if (hash >= 0 && hash < input.length - 1) {
-      final String fragment = _decode(input.substring(hash + 1)).trim();
-      if (fragment.isNotEmpty) {
-        return fragment;
-      }
-    }
-
-    final Map<String, String> query = _queryOf(input);
-    for (final String key in const <String>['remarks', 'remark', 'name', 'tag', 'ps']) {
-      final String? value = query[key];
-      if (value != null && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-
-    return type.name.toUpperCase();
-  }
-
-  Map<String, String> _queryOf(String input) {
-    final int hash = input.indexOf('#');
-    final String withoutFragment = hash >= 0 ? input.substring(0, hash) : input;
-
-    final int mark = withoutFragment.indexOf('?');
-    if (mark < 0 || mark == withoutFragment.length - 1) {
-      return const <String, String>{};
-    }
-
-    final Map<String, String> result = <String, String>{};
-    for (final String pair in withoutFragment.substring(mark + 1).split('&')) {
-      if (pair.isEmpty) {
-        continue;
-      }
-      final int eq = pair.indexOf('=');
-      if (eq <= 0) {
-        result[_decode(pair)] = '';
-      } else {
-        result[_decode(pair.substring(0, eq))] = _decode(pair.substring(eq + 1));
-      }
-    }
-    return result;
-  }
-
-  /// پورت پیش‌فرض برای لینک‌هایی که پورت ندارند (مثل `tor://` محلی).
-  int _defaultPort(String scheme) {
-    switch (scheme) {
-      case 'tor':
-        return 9050;
-      case 'ssh':
-        return 22;
-      case 'http':
-        return 80;
-      case 'https':
-      case 'naive':
-      case 'naive+https':
-        return 443;
-      case 'socks':
-      case 'socks5':
-      case 'socks5h':
-      case 'socks4':
-        return 1080;
+  /// [outbound] اختیاری است و فقط برای تفکیک VLESS معمولی از
+  /// VLESS + XTLS Reality استفاده می‌شود.
+  ProfileType _mapProtocol(String protocol, [Map<String, dynamic>? outbound]) {
+    switch (protocol.trim().toLowerCase()) {
+      case 'vmess':
+        return ProfileType.vmess;
+      case 'vless':
+        return _isReality(outbound) ? ProfileType.reality : ProfileType.vless;
+      case 'reality':
+        return ProfileType.reality;
+      case 'trojan':
+      case 'trojan-go':
+        return ProfileType.trojan;
+      case 'shadowsocks':
+      case 'ss':
+        return ProfileType.shadowsocks;
+      case 'shadowtls':
+        return ProfileType.shadowtls;
+      case 'anytls':
+        return ProfileType.anytls;
+      case 'hysteria':
+        return ProfileType.hysteria;
+      case 'hysteria2':
+      case 'hy2':
+        return ProfileType.hysteria2;
+      case 'tuic':
+        return ProfileType.tuic;
       case 'wireguard':
       case 'wg':
-        return 51820;
+        return ProfileType.wireguard;
+      case 'naive':
+      case 'naiveproxy':
+        return ProfileType.naive;
+      case 'tor':
+        return ProfileType.tor;
+      case 'ssh':
+        return ProfileType.ssh;
+      case 'socks':
+      case 'socks4':
+      case 'socks4a':
+      case 'socks5':
+        return ProfileType.socks;
+      case 'http':
+      case 'https':
+        return ProfileType.http;
       default:
-        return 0;
+        return ProfileType.unknown;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // ابزارها
-  // ---------------------------------------------------------------------------
-
-  String _schemeOf(String value) {
-    final int index = value.indexOf('://');
-    if (index <= 0) {
-      return '';
-    }
-    final String scheme = value.substring(0, index).toLowerCase();
-    return RegExp(r'^[a-z][a-z0-9+.\-]*$').hasMatch(scheme) ? scheme : '';
-  }
-
-  _HostPort _splitHostPort(String value) {
-    final String trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      return const _HostPort('', 0);
+  /// وجود `reality` در بخش TLS به‌معنای VLESS + XTLS Reality است.
+  bool _isReality(Map<String, dynamic>? outbound) {
+    if (outbound == null) {
+      return false;
     }
 
-    if (trimmed.startsWith('[')) {
-      final int close = trimmed.indexOf(']');
-      if (close > 0) {
-        final String host = trimmed.substring(1, close);
-        final String rest = trimmed.substring(close + 1);
-        final int port = rest.startsWith(':')
-            ? int.tryParse(rest.substring(1)) ?? 0
-            : 0;
-        return _HostPort(host, port);
+    final Object? tls = outbound['tls'] ?? outbound['streamSettings'];
+    if (tls is Map<String, dynamic>) {
+      final Object? reality = tls['reality'] ?? tls['realitySettings'];
+      if (reality is Map<String, dynamic> && reality.isNotEmpty) {
+        return reality['enabled'] != false;
+      }
+      if ((tls['security'] ?? '').toString().toLowerCase() == 'reality') {
+        return true;
       }
     }
 
-    final int colon = trimmed.lastIndexOf(':');
-    if (colon > 0) {
-      final int? port = int.tryParse(trimmed.substring(colon + 1));
-      if (port != null) {
-        return _HostPort(trimmed.substring(0, colon), port);
-      }
-    }
-
-    return _HostPort(trimmed, 0);
+    return false;
   }
 
-  String _decode(String value) {
+  Profile _parseVmess(String input) {
+    final String payload = input.substring('vmess://'.length).trim();
+
     try {
-      return Uri.decodeComponent(value.replaceAll('+', ' '));
-    } catch (_) {
-      return value;
+      final String normalized = base64.normalize(payload);
+      final Map<String, dynamic> json = jsonDecode(
+        utf8.decode(base64Decode(normalized)),
+      ) as Map<String, dynamic>;
+
+      return Profile(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        name: (json['ps'] as String?)?.trim().isNotEmpty == true
+            ? (json['ps'] as String).trim()
+            : 'VMess',
+        server: json['add'] as String? ?? '',
+        port: int.tryParse(json['port']?.toString() ?? '') ?? 0,
+        type: ProfileType.vmess,
+        rawConfig: input,
+        isActive: false,
+        createdAt: DateTime.now(),
+      );
+    } on Object {
+      // برخی پنل‌ها vmess را به‌شکل URI استاندارد (VMessAEAD) می‌دهند.
+      return _parseUriBased(input, ProfileType.vmess);
     }
   }
 
-  String _nextId() {
-    _seq = (_seq + 1) & 0xFFFF;
-    return '${DateTime.now().microsecondsSinceEpoch}-$_seq';
+  Profile _parseUriBased(String input, ProfileType type) {
+    ProfileType resolved = type;
+    String host = '';
+    int port = 0;
+    String name = type.name.toUpperCase();
+
+    try {
+      final Uri uri = Uri.parse(input);
+      host = uri.host;
+      port = uri.hasPort ? uri.port : 0;
+
+      if (uri.fragment.trim().isNotEmpty) {
+        name = Uri.decodeComponent(uri.fragment).trim();
+      }
+
+      // vless با security=reality نوع مجزا دارد.
+      if (type == ProfileType.vless) {
+        final String security =
+            (uri.queryParameters['security'] ?? '').toLowerCase();
+        final bool hasPbk =
+            (uri.queryParameters['pbk'] ?? '').trim().isNotEmpty;
+        if (security == 'reality' || hasPbk) {
+          resolved = ProfileType.reality;
+        }
+      }
+    } on FormatException {
+      // ورودی خراب است؛ همان مقادیر پیش‌فرض می‌ماند و rawConfig حفظ می‌شود.
+    }
+
+    return Profile(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name,
+      server: host,
+      port: port,
+      type: resolved,
+      rawConfig: input,
+      isActive: false,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// دو قالب رایج Shadowsocks:
+  /// `ss://base64(method:pass@host:port)#name` و
+  /// `ss://base64(method:pass)@host:port#name`
+  Profile _parseShadowsocks(String input) {
+    final int schemeEnd = input.indexOf('://') + 3;
+    String body = input.substring(schemeEnd);
+    String name = 'Shadowsocks';
+
+    final int hashIndex = body.indexOf('#');
+    if (hashIndex >= 0) {
+      final String tag = body.substring(hashIndex + 1).trim();
+      if (tag.isNotEmpty) {
+        try {
+          name = Uri.decodeComponent(tag);
+        } on ArgumentError {
+          name = tag;
+        }
+      }
+      body = body.substring(0, hashIndex);
+    }
+
+    final int queryIndex = body.indexOf('?');
+    if (queryIndex >= 0) {
+      body = body.substring(0, queryIndex);
+    }
+
+    // اگر @ وجود ندارد، کل بدنه بیس۶۴ است.
+    if (!body.contains('@')) {
+      try {
+        body = utf8.decode(base64Decode(base64.normalize(body)));
+      } on Object {
+        // بیس۶۴ نبود؛ همان متن خام بررسی می‌شود.
+      }
+    }
+
+    String host = '';
+    int port = 0;
+    final int atIndex = body.lastIndexOf('@');
+    if (atIndex >= 0) {
+      final String hostPort = body.substring(atIndex + 1);
+      final int colonIndex = hostPort.lastIndexOf(':');
+      if (colonIndex > 0) {
+        host = hostPort.substring(0, colonIndex).replaceAll(RegExp(r'^\[|\]$'), '');
+        port = int.tryParse(hostPort.substring(colonIndex + 1)) ?? 0;
+      } else {
+        host = hostPort;
+      }
+    }
+
+    return Profile(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name,
+      server: host,
+      port: port,
+      type: ProfileType.shadowsocks,
+      rawConfig: input,
+      isActive: false,
+      createdAt: DateTime.now(),
+    );
   }
 
   Profile _fallback(String value, String name) {
     return Profile(
-      id: _nextId(),
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
       name: name,
       server: '',
       port: 0,
@@ -540,11 +426,4 @@ class ProfileImportParser {
       createdAt: DateTime.now(),
     );
   }
-}
-
-class _HostPort {
-  const _HostPort(this.host, this.port);
-
-  final String host;
-  final int port;
 }
