@@ -42,20 +42,17 @@ final GoRouter appRouter = GoRouter(
         return const NativeLogScreen();
       },
     ),
-    // صفحه ورود پنل ادمین (رمز پیش‌فرض: admin)
     GoRoute(
       path: '/admin',
       builder: (BuildContext context, GoRouterState state) {
         return const AdminLoginScreen();
       },
-      routes: <RouteBase>[
-        GoRoute(
-          path: 'panel',
-          builder: (BuildContext context, GoRouterState state) {
-            return const AdminPanelScreen();
-          },
-        ),
-      ],
+    ),
+    GoRoute(
+      path: '/admin/panel',
+      builder: (BuildContext context, GoRouterState state) {
+        return const AdminPanelScreen();
+      },
     ),
   ],
 );
