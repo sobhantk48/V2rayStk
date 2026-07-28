@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/locale_controller.dart';
 import '../../../core/widgets/app_scaffold.dart';
+import '../../../l10n/strings.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Strings strings = Strings.of(context);
+    final Locale locale = ref.watch(localeControllerProvider);
+    final bool isFa = locale.languageCode == 'fa';
+
     return AppScaffold(
       title: 'Settings',
       currentIndex: 3,
@@ -24,17 +31,19 @@ class SettingsScreen extends StatelessWidget {
           ),
           const Divider(height: 1),
           const _SectionHeader('General / عمومی'),
-          const ListTile(
-            leading: Icon(Icons.language),
-            title: Text('Language / زبان'),
-            subtitle: Text('فارسی / English'),
-            trailing: Icon(Icons.chevron_right),
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: Text(strings.language),
+            subtitle: Text(isFa ? 'فارسی' : 'English'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showLanguageSheet(context, ref, locale),
           ),
-          const ListTile(
-            leading: Icon(Icons.admin_panel_settings),
-            title: Text('Admin Panel / پنل ادمین'),
-            subtitle: Text('تنظیمات پیشرفته و رمز عبور'),
-            trailing: Icon(Icons.chevron_right),
+          ListTile(
+            leading: const Icon(Icons.admin_panel_settings),
+            title: Text(strings.adminPanel),
+            subtitle: const Text('تنظیمات پیشرفته و رمز عبور'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/admin'),
           ),
           const Divider(height: 1),
           const _SectionHeader('About / درباره'),
@@ -46,6 +55,51 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showLanguageSheet(
+    BuildContext context,
+    WidgetRef ref,
+    Locale current,
+  ) async {
+    final Locale? picked = await showModalBottomSheet<Locale>(
+      context: context,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Language / زبان',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              RadioListTile<String>(
+                value: 'fa',
+                groupValue: current.languageCode,
+                title: const Text('فارسی'),
+                onChanged: (_) =>
+                    Navigator.of(sheetContext).pop(const Locale('fa')),
+              ),
+              RadioListTile<String>(
+                value: 'en',
+                groupValue: current.languageCode,
+                title: const Text('English'),
+                onChanged: (_) =>
+                    Navigator.of(sheetContext).pop(const Locale('en')),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      await ref.read(localeControllerProvider.notifier).setLocale(picked);
+    }
   }
 }
 

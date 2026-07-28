@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/admin/presentation/admin_login_screen.dart';
+import '../features/admin/presentation/admin_panel_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/logs/presentation/native_log_screen.dart';
 import '../features/profiles/presentation/profiles_screen.dart';
@@ -39,6 +41,21 @@ final GoRouter appRouter = GoRouter(
       builder: (BuildContext context, GoRouterState state) {
         return const NativeLogScreen();
       },
+    ),
+    // صفحه ورود پنل ادمین (رمز پیش‌فرض: admin)
+    GoRoute(
+      path: '/admin',
+      builder: (BuildContext context, GoRouterState state) {
+        return const AdminLoginScreen();
+      },
+      routes: <RouteBase>[
+        GoRoute(
+          path: 'panel',
+          builder: (BuildContext context, GoRouterState state) {
+            return const AdminPanelScreen();
+          },
+        ),
+      ],
     ),
   ],
 );
