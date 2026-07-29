@@ -1,10 +1,5 @@
 import 'profile_type.dart';
 
-/// مدل یک کانفیگ/پروکسی.
-/// - [groupId] برای «مدیریت گروه‌ها» (null = گروه پیش‌فرض)
-/// - [subscriptionUrl] برای پروفایل‌هایی که از Subscription آمده‌اند
-/// - [latencyMs] آخرین پینگ اندازه‌گیری‌شده (Ping All)
-/// - [uploadBytes]/[downloadBytes] آمار مصرف هر پروکسی
 class Profile {
   const Profile({
     required this.id,
@@ -16,11 +11,7 @@ class Profile {
     this.port,
     this.isActive = false,
     this.groupId,
-    this.subscriptionUrl,
-    this.latencyMs,
-    this.uploadBytes = 0,
-    this.downloadBytes = 0,
-    this.sortIndex = 0,
+    this.subscriptionId,
   });
 
   final String id;
@@ -31,24 +22,14 @@ class Profile {
   final String? server;
   final int? port;
   final bool isActive;
+
+  /// شناسه گروه؛ null یعنی «بدون گروه».
   final String? groupId;
-  final String? subscriptionUrl;
-  final int? latencyMs;
-  final int uploadBytes;
-  final int downloadBytes;
-  final int sortIndex;
 
-  bool get isFromSubscription =>
-      subscriptionUrl != null && subscriptionUrl!.trim().isNotEmpty;
+  /// اگر پروفایل از یک لینک اشتراک آمده باشد، شناسه آن اشتراک.
+  final String? subscriptionId;
 
-  int get totalBytes => uploadBytes + downloadBytes;
-
-  /// «vless · 1.2.3.4:443»
-  String get subtitle {
-    final String host = server ?? '-';
-    final String p = port == null ? '' : ':$port';
-    return '${type.label} · $host$p';
-  }
+  bool get hasGroup => groupId != null && groupId!.isNotEmpty;
 
   Profile copyWith({
     String? id,
@@ -60,14 +41,9 @@ class Profile {
     int? port,
     bool? isActive,
     String? groupId,
-    bool clearGroupId = false,
-    String? subscriptionUrl,
-    bool clearSubscriptionUrl = false,
-    int? latencyMs,
-    bool clearLatency = false,
-    int? uploadBytes,
-    int? downloadBytes,
-    int? sortIndex,
+    String? subscriptionId,
+    bool clearGroup = false,
+    bool clearSubscription = false,
   }) {
     return Profile(
       id: id ?? this.id,
@@ -78,13 +54,9 @@ class Profile {
       server: server ?? this.server,
       port: port ?? this.port,
       isActive: isActive ?? this.isActive,
-      groupId: clearGroupId ? null : (groupId ?? this.groupId),
-      subscriptionUrl:
-          clearSubscriptionUrl ? null : (subscriptionUrl ?? this.subscriptionUrl),
-      latencyMs: clearLatency ? null : (latencyMs ?? this.latencyMs),
-      uploadBytes: uploadBytes ?? this.uploadBytes,
-      downloadBytes: downloadBytes ?? this.downloadBytes,
-      sortIndex: sortIndex ?? this.sortIndex,
+      groupId: clearGroup ? null : (groupId ?? this.groupId),
+      subscriptionId:
+          clearSubscription ? null : (subscriptionId ?? this.subscriptionId),
     );
   }
 
@@ -99,11 +71,7 @@ class Profile {
       'port': port,
       'isActive': isActive,
       'groupId': groupId,
-      'subscriptionUrl': subscriptionUrl,
-      'latencyMs': latencyMs,
-      'uploadBytes': uploadBytes,
-      'downloadBytes': downloadBytes,
-      'sortIndex': sortIndex,
+      'subscriptionId': subscriptionId,
     };
   }
 
@@ -113,42 +81,38 @@ class Profile {
       name: json['name'] as String? ?? 'Unnamed profile',
       type: ProfileTypeX.fromName(json['type'] as String?),
       rawConfig: json['rawConfig'] as String? ?? '',
-      createdAt: _parseDate(json['createdAt']),
+      createdAt: json['createdAt'] == null
+          ? DateTime.fromMillisecondsSinceEpoch(0)
+          : DateTime.parse(json['createdAt'] as String),
       server: json['server'] as String?,
-      port: _parseInt(json['port']),
+      port: _parsePort(json['port']),
       isActive: json['isActive'] as bool? ?? false,
-      groupId: json['groupId'] as String?,
-      subscriptionUrl: json['subscriptionUrl'] as String?,
-      latencyMs: _parseInt(json['latencyMs']),
-      uploadBytes: _parseInt(json['uploadBytes']) ?? 0,
-      downloadBytes: _parseInt(json['downloadBytes']) ?? 0,
-      sortIndex: _parseInt(json['sortIndex']) ?? 0,
+      groupId: _emptyToNull(json['groupId'] as String?),
+      subscriptionId: _emptyToNull(json['subscriptionId'] as String?),
     );
   }
 
-  static DateTime _parseDate(Object? value) {
-    if (value is String) {
-      return DateTime.tryParse(value) ??
-          DateTime.fromMillisecondsSinceEpoch(0);
+  static String? _emptyToNull(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
     }
-    if (value is int) {
-      return DateTime.fromMillisecondsSinceEpoch(value);
-    }
-    return DateTime.fromMillisecondsSinceEpoch(0);
+
+    return value;
   }
 
-  static int? _parseInt(Object? value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value.trim());
+  static int? _parsePort(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is String) {
+      return int.tryParse(value);
+    }
+
     return null;
   }
-
-  @override
-  bool operator ==(Object other) =>
-      other is Profile && other.id == id && other.rawConfig == rawConfig;
-
-  @override
-  int get hashCode => Object.hash(id, rawConfig);
 }
