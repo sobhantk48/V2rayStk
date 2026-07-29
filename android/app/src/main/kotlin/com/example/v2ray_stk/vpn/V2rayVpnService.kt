@@ -3,10 +3,14 @@ package com.example.v2ray_stk.vpn
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.core.app.NotificationCompat
 
 class V2rayVpnService : VpnService() {
@@ -16,65 +20,123 @@ class V2rayVpnService : VpnService() {
         const val ACTION_DISCONNECT = "com.v2ray.stk.DISCONNECT"
         const val EXTRA_CONFIG = "extra_config"
 
+        private const val TAG = "V2rayVpnService"
+        private const val NOTIFICATION_ID = 1
+        private const val CHANNEL_ID = "v2ray_stk_vpn"
+
+        // باید دقیقا با مقادیر _tunInbound در sing_box_config_generator.dart یکی باشد
         private const val TUN_ADDRESS = "172.19.0.1"
         private const val TUN_PREFIX = 28
         private const val TUN_MTU = 1500
 
-        private const val NOTIF_CHANNEL_ID = "v2ray_stk_vpn"
-        private const val NOTIF_ID = 0x5754
-
-        @Volatile
-        var instance: V2rayVpnService? = null
-            private set
+        // فاصله بین تلاش‌های اتصال Bridge به هسته
+        private const val BRIDGE_FIRST_DELAY_MS = 700L
+        private const val BRIDGE_RETRY_MS = 3000L
+        private const val BRIDGE_MAX_RETRY = 10
     }
 
     private var tunInterface: ParcelFileDescriptor? = null
 
-    override fun onCreate() {
-        super.onCreate()
-        instance = this
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var bridgeStarted = false
+    private var bridgeRetry = 0
+
+    private val bridgeWatch = object : Runnable {
+        override fun run() {
+            // اگر VPN قطع شده، دیگر تلاش نکن
+            if (tunInterface == null) return
+
+            if (!bridgeStarted) {
+                runCatching { CommandClientBridge.start() }
+                    .onSuccess {
+                        bridgeStarted = true
+                        Log.d(TAG, "CommandClientBridge.start() فراخوانی شد")
+                    }
+                    .onFailure { t ->
+                        Log.w(TAG, "CommandClientBridge.start() failed: ${t.message}")
+                    }
+            }
+
+            // اگر بعد از start هنوز داده‌ای نرسیده، دوباره تلاش کن
+            val healthy = runCatching { CommandClientBridge.hasData }.getOrDefault(false)
+            if (!healthy && bridgeRetry < BRIDGE_MAX_RETRY) {
+                bridgeRetry++
+                Log.d(TAG, "bridge بدون داده، تلاش مجدد #$bridgeRetry")
+                runCatching { CommandClientBridge.stop() }
+                bridgeStarted = false
+                mainHandler.postDelayed(this, BRIDGE_RETRY_MS)
+            } else if (healthy) {
+                Log.d(TAG, "bridge سالم است و داده دریافت می‌شود")
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_DISCONNECT) {
-            stopVpn()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_DISCONNECT -> {
+                stopVpn()
+                return START_NOT_STICKY
+            }
+
+            else -> {
+                val config = intent?.getStringExtra(EXTRA_CONFIG).orEmpty()
+                startVpn(config)
+            }
         }
-        val config = intent?.getStringExtra(EXTRA_CONFIG) ?: ""
-        startVpn(config)
         return START_STICKY
     }
 
     private fun startVpn(config: String) {
+        startForegroundSafely()
+        VpnState.update(VpnStatus.CONNECTING)
+
+        if (config.isBlank()) {
+            Log.e(TAG, "config خالی است")
+            VpnState.update(VpnStatus.DISCONNECTED)
+            stopVpn()
+            return
+        }
+
         try {
-            startForegroundNotification()
-            VpnState.update(VpnStatus.CONNECTING)
-
-            if (config.isBlank()) {
-                LogStore.append("app", "کانفیگ خالی است؛ اتصال لغو شد")
-                stopVpn()
-                return
-            }
-
             val tun = establishTun()
             if (tun == null) {
-                LogStore.append("app", "ساخت رابط TUN ناموفق بود")
+                Log.e(TAG, "establish() برگشت null (اجازه VPN صادر نشده؟)")
+                VpnState.update(VpnStatus.DISCONNECTED)
                 stopVpn()
                 return
             }
+
             tunInterface = tun
+            Log.d(
+                TAG,
+                "tun established fd=${tun.fd} mtu=$TUN_MTU addr=$TUN_ADDRESS/$TUN_PREFIX",
+            )
 
             SingBoxBridge.start(this, tun.fd, config)
-
-            // اتصال به CommandServer هسته برای آمار زنده و لاگ
-            runCatching { CommandClientBridge.start() }
-                .onFailure { LogStore.append("app", "CommandClient خطا: ${it.message}") }
-
             VpnState.update(VpnStatus.CONNECTED)
-        } catch (t: Throwable) {
-            LogStore.append("app", "خطا در راه‌اندازی VPN: ${t.message}")
+
+            startBridgeWatch()
+        } catch (e: Throwable) {
+            Log.e(TAG, "startVpn failed", e)
+            VpnState.update(VpnStatus.DISCONNECTED)
             stopVpn()
         }
+    }
+
+    private fun startBridgeWatch() {
+        stopBridge()
+        bridgeRetry = 0
+        bridgeStarted = false
+        mainHandler.postDelayed(bridgeWatch, BRIDGE_FIRST_DELAY_MS)
+    }
+
+    private fun stopBridge() {
+        mainHandler.removeCallbacks(bridgeWatch)
+        if (bridgeStarted) {
+            runCatching { CommandClientBridge.stop() }
+        }
+        bridgeStarted = false
+        bridgeRetry = 0
     }
 
     private fun establishTun(): ParcelFileDescriptor? {
@@ -85,54 +147,30 @@ class V2rayVpnService : VpnService() {
             .addRoute("0.0.0.0", 0)
             .addDnsServer("172.19.0.1")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= 29) {
             builder.setMetered(false)
         }
+
+        if (Build.VERSION.SDK_INT >= 21) {
+            builder.allowFamily(android.system.OsConstants.AF_INET)
+        }
+
         runCatching { builder.addDisallowedApplication(packageName) }
 
-        return runCatching { builder.establish() }.getOrNull()
+        return builder.establish()
     }
 
     private fun stopVpn() {
-        runCatching { CommandClientBridge.stop() }
+        stopBridge()
         runCatching { SingBoxBridge.stop() }
         runCatching { tunInterface?.close() }
         tunInterface = null
         VpnState.update(VpnStatus.DISCONNECTED)
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
-            }
-        }
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         stopSelf()
     }
 
-    private fun startForegroundNotification() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = getSystemService(NotificationManager::class.java)
-            if (manager?.getNotificationChannel(NOTIF_CHANNEL_ID) == null) {
-                val channel = NotificationChannel(
-                    NOTIF_CHANNEL_ID,
-                    "V2ray Stk",
-                    NotificationManager.IMPORTANCE_LOW
-                )
-                manager?.createNotificationChannel(channel)
-            }
-        }
-        val notification: Notification = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
-            .setContentTitle("V2ray Stk")
-            .setContentText("در حال اجرا")
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setOngoing(true)
-            .build()
-        startForeground(NOTIF_ID, notification)
-    }
-
     override fun onDestroy() {
-        instance = null
         stopVpn()
         super.onDestroy()
     }
@@ -140,5 +178,33 @@ class V2rayVpnService : VpnService() {
     override fun onRevoke() {
         stopVpn()
         super.onRevoke()
+    }
+
+    private fun startForegroundSafely() {
+        createChannel()
+
+        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("V2ray Stk")
+            .setContentText("VPN در حال اجرا")
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
+        runCatching { startForeground(NOTIFICATION_ID, notification) }
+    }
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "V2ray Stk VPN",
+                NotificationManager.IMPORTANCE_LOW,
+            )
+            manager.createNotificationChannel(channel)
+        }
     }
 }
