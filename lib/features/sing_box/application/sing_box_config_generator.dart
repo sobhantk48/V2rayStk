@@ -122,7 +122,7 @@ class SingBoxConfigGenerator {
   Map<String, dynamic> _experimental() {
     return <String, dynamic>{
       'clash_api': <String, dynamic>{
-        'external_controller': AppConstants.clashApiAddress,
+        'external_controller': AppConstants.clashApiListenAddress,
         'external_ui': 'ui',
         'secret': AppConstants.clashApiSecret,
         'default_mode': 'rule',
