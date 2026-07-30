@@ -909,7 +909,7 @@ class SingBoxConfigGenerator {
         final String serviceName = _pick(params, <String>[
               'serviceName',
               'service_name',
-1              'servicename',
+              'servicename',
             ]) ??
             path;
         return <String, dynamic>{
@@ -1177,8 +1177,11 @@ class SingBoxConfigGenerator {
     return _tryDecodeJsonObject(decoded);
   }
 
+  /// تگ خروجی را بر اساس نام پروفایل تعیین می‌کند؛
+  /// اگر نام خالی/فقط فاصله باشد از تگ پیش‌فرض [proxyTag] استفاده می‌شود.
   String _safeTag(Profile profile) {
-    return proxyTag;
+    final String name = profile.name.trim().replaceAll(RegExp(r'\s+'), '_');
+    return name.isNotEmpty ? name : proxyTag;
   }
 
   // ---------------------------------------------------------------------------
@@ -1279,13 +1282,6 @@ class SingBoxConfigGenerator {
       throw SingBoxConfigException('$name is required');
     }
     return result;
-  }
-
-  dynamic _require(dynamic value, String name) {
-    if (value == null) {
-      throw SingBoxConfigException('$name is required');
-    }
-    return value;
   }
 }
 
