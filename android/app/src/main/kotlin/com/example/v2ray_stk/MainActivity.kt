@@ -16,11 +16,9 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
-import java.net.HttpURLConnection
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.net.URL
-import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
 
@@ -28,32 +26,19 @@ class MainActivity : FlutterActivity() {
     private val eventChannelName = "com.v2ray.stk/vpn_status"
     private val vpnPrepareRequestCode = 0x0f2c
 
+    // هدف پینگ: هندشیک TCP روی پورت 80 که از داخل تانل عبور می‌کند
+    private val latencyHost = "www.gstatic.com"
+    private val latencyPort = 80
+    private val latencyTimeoutMs = 4000
+
     private var pendingConfig: String? = null
     private var eventSink: EventChannel.EventSink? = null
-
-    private val io = Executors.newCachedThreadPool()
-    private val main = Handler(Looper.getMainLooper())
-
-    /** آخرین پینگ موفق؛ -1 یعنی نامعتبر / تایم‌اوت */
-    @Volatile private var lastPing: Long = -1L
-
-    /** تلاش‌های اتصال Bridge به هسته */
-    private var bridgeRetry = 0
-    private val bridgeTicker = object : Runnable {
-        override fun run() {
-            if (!isConnected()) { bridgeRetry = 0; return }
-            if (CommandClientBridge.hasData) return
-            if (bridgeRetry >= 20) return
-            bridgeRetry++
-            runCatching { CommandClientBridge.stop() }
-            runCatching { CommandClientBridge.start() }
-            main.postDelayed(this, 1500L)
-        }
-    }
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // ثبت کانال لاگ
         LogChannel.register(flutterEngine)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
@@ -71,27 +56,9 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
-                    "getStats" -> result.success(buildStats())
+                    "getStats" -> result.success(buildStatsMap())
 
-                    "testLatency" -> {
-                        val host = call.argument<String>("host")
-                        val port = call.argument<Int>("port") ?: 443
-                        val url = call.argument<String>("url")
-                            ?: "https://www.gstatic.com/generate_204"
-                        val timeout = call.argument<Int>("timeout") ?: 5000
-                        io.execute {
-                            val ms = if (host.isNullOrBlank()) measureHttp(url, timeout)
-                            else measureTcp(host, port, timeout)
-                            lastPing = ms
-                            main.post { result.success(ms) }
-                        }
-                    }
-
-                    "resetStats" -> {
-                        lastPing = -1L
-                        runCatching { CommandClientBridge.stop() }
-                        result.success(null)
-                    }
+                    "testLatency" -> measureLatency(result)
 
                     else -> result.notImplemented()
                 }
@@ -112,81 +79,59 @@ class MainActivity : FlutterActivity() {
                     eventSink = null
                 }
             })
-
-        // اگر اکتیویتی بعد از برقراری تونل باز شد، Bridge را دوباره بچسبان
-        if (isConnected()) startBridgeWatch()
     }
 
-    // ---------- Stats ----------
+    // ------------------------------------------------------------------ stats
 
-    private fun buildStats(): Map<String, Any> {
-        val connected = isConnected()
-        val has = connected && CommandClientBridge.hasData
+    /**
+     * کلیدها عیناً همان چیزی هستند که VpnStats.fromMap در فلاتر انتظار دارد.
+     * تا وقتی هسته اولین StatusMessage را نداده باشد (hasData == false)
+     * مقادیر صفر برمی‌گردند و UI صفر نشان می‌دهد، نه مقدار قدیمی.
+     */
+    private fun buildStatsMap(): Map<String, Any?> {
+        val live = CommandClientBridge.hasData
         return mapOf(
-            "connected" to connected,
-            "hasData" to has,
-            "ping" to if (connected) lastPing else -1L,
-            "downloadBps" to if (has) CommandClientBridge.downlink else 0L,
-            "uploadBps" to if (has) CommandClientBridge.uplink else 0L,
-            "totalDownload" to if (has) CommandClientBridge.downlinkTotal else 0L,
-            "totalUpload" to if (has) CommandClientBridge.uplinkTotal else 0L,
-            "memory" to if (has) CommandClientBridge.memory else 0L,
-            "goroutines" to if (has) CommandClientBridge.goroutines else 0L,
-            "connectionsIn" to if (has) CommandClientBridge.connectionsIn else 0L,
-            "connectionsOut" to if (has) CommandClientBridge.connectionsOut else 0L
+            "downloadBps" to if (live) CommandClientBridge.downlink else 0L,
+            "uploadBps" to if (live) CommandClientBridge.uplink else 0L,
+            "totalDownload" to CommandClientBridge.downlinkTotal,
+            "totalUpload" to CommandClientBridge.uplinkTotal,
+            "memory" to CommandClientBridge.memory,
+            "goroutines" to CommandClientBridge.goroutines,
+            "connectionsIn" to CommandClientBridge.connectionsIn,
+            "connectionsOut" to CommandClientBridge.connectionsOut,
+            "location" to null,
+            "ping" to null
         )
     }
 
-    private fun measureTcp(host: String, port: Int, timeout: Int): Long {
-        return try {
-            val started = System.nanoTime()
-            Socket().use { s ->
-                s.connect(InetSocketAddress(host, port), timeout)
-            }
-            (System.nanoTime() - started) / 1_000_000L
-        } catch (_: Throwable) {
-            -1L
-        }
+    // ---------------------------------------------------------------- latency
+
+    private fun measureLatency(result: MethodChannel.Result) {
+        Thread {
+            val value = tcpHandshakeMillis()
+            mainHandler.post { result.success(value) }
+        }.apply { isDaemon = true }.start()
     }
 
-    private fun measureHttp(url: String, timeout: Int): Long {
-        var conn: HttpURLConnection? = null
+    /** زمان هندشیک TCP بر حسب میلی‌ثانیه؛ در صورت خطا -1 */
+    private fun tcpHandshakeMillis(): Int {
+        var socket: Socket? = null
         return try {
             val started = System.nanoTime()
-            conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = timeout
-                readTimeout = timeout
-                requestMethod = "GET"
-                instanceFollowRedirects = false
-                useCaches = false
-                setRequestProperty("Connection", "close")
-            }
-            val code = conn.responseCode
-            conn.inputStream?.close()
-            if (code in 200..399) (System.nanoTime() - started) / 1_000_000L else -1L
-        } catch (_: Throwable) {
-            -1L
+            socket = Socket()
+            socket.connect(InetSocketAddress(latencyHost, latencyPort), latencyTimeoutMs)
+            ((System.nanoTime() - started) / 1_000_000L).toInt()
+        } catch (t: Throwable) {
+            -1
         } finally {
-            runCatching { conn?.disconnect() }
+            try {
+                socket?.close()
+            } catch (_: IOException) {
+            }
         }
     }
 
-    private fun isConnected(): Boolean =
-        VpnState.status.toString().lowercase().let { it == "connected" || it == "vpnstatus.connected" }
-
-    private fun startBridgeWatch() {
-        bridgeRetry = 0
-        main.removeCallbacks(bridgeTicker)
-        main.post(bridgeTicker)
-    }
-
-    private fun stopBridge() {
-        main.removeCallbacks(bridgeTicker)
-        lastPing = -1L
-        runCatching { CommandClientBridge.stop() }
-    }
-
-    // ---------- VPN ----------
+    // ------------------------------------------------------------------- vpn
 
     private fun prepareAndConnect(config: String) {
         val prepareIntent = VpnService.prepare(this)
@@ -204,12 +149,9 @@ class MainActivity : FlutterActivity() {
             putExtra(V2rayVpnService.EXTRA_CONFIG, config)
         }
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-        // Bridge را با تاخیر وصل کن؛ هسته چند صد میلی‌ثانیه بعد آماده می‌شود
-        main.postDelayed({ startBridgeWatch() }, 1200L)
     }
 
     private fun disconnect() {
-        stopBridge()
         startService(Intent(this, V2rayVpnService::class.java).apply {
             action = V2rayVpnService.ACTION_DISCONNECT
         })
@@ -225,10 +167,5 @@ class MainActivity : FlutterActivity() {
             }
             pendingConfig = null
         }
-    }
-
-    override fun onDestroy() {
-        main.removeCallbacks(bridgeTicker)
-        super.onDestroy()
     }
 }
