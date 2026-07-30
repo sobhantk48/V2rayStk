@@ -9,6 +9,10 @@ abstract class ProfileRepository {
 
   Future<void> updateProfile(Profile profile);
 
+  /// به‌روزرسانی دسته‌جمعی: فقط یک بار خواندن و یک بار نوشتن روی دیسک.
+  /// پروفایل‌هایی که id آن‌ها در لیست موجود نباشد، نادیده گرفته می‌شوند.
+  Future<void> updateProfiles(List<Profile> profiles);
+
   Future<void> deleteProfile(String profileId);
 
   Future<void> deleteAll();
