@@ -1,5 +1,8 @@
 import 'profile_type.dart';
 
+/// نگهبان (sentinel) برای تشخیص «مقدار داده نشده» از «مقدار null».
+const Object _unset = Object();
+
 class Profile {
   const Profile({
     required this.id,
@@ -23,15 +26,11 @@ class Profile {
   final int? port;
   final bool isActive;
 
-  /// گروه دسته‌بندی؛ null یعنی بدون گروه.
+  /// شناسهٔ گروهی که این پروفایل داخلش است. null = بدون گروه.
   final String? groupId;
 
-  /// اگر از لینک اشتراک آمده باشد، شناسه آن اشتراک.
+  /// شناسهٔ اشتراکی که این پروفایل از آن وارد شده. null = دستی.
   final String? subscriptionId;
-
-  bool get hasGroup => (groupId ?? '').isNotEmpty;
-
-  bool get isFromSubscription => (subscriptionId ?? '').isNotEmpty;
 
   Profile copyWith({
     String? id,
@@ -39,11 +38,11 @@ class Profile {
     ProfileType? type,
     String? rawConfig,
     DateTime? createdAt,
-    String? server,
-    int? port,
+    Object? server = _unset,
+    Object? port = _unset,
     bool? isActive,
-    String? groupId,
-    String? subscriptionId,
+    Object? groupId = _unset,
+    Object? subscriptionId = _unset,
     bool clearGroup = false,
     bool clearSubscription = false,
   }) {
@@ -53,12 +52,17 @@ class Profile {
       type: type ?? this.type,
       rawConfig: rawConfig ?? this.rawConfig,
       createdAt: createdAt ?? this.createdAt,
-      server: server ?? this.server,
-      port: port ?? this.port,
+      server: server == _unset ? this.server : server as String?,
+      port: port == _unset ? this.port : port as int?,
       isActive: isActive ?? this.isActive,
-      groupId: clearGroup ? null : (groupId ?? this.groupId),
-      subscriptionId:
-          clearSubscription ? null : (subscriptionId ?? this.subscriptionId),
+      groupId: clearGroup
+          ? null
+          : (groupId == _unset ? this.groupId : groupId as String?),
+      subscriptionId: clearSubscription
+          ? null
+          : (subscriptionId == _unset
+              ? this.subscriptionId
+              : subscriptionId as String?),
     );
   }
 
@@ -89,16 +93,9 @@ class Profile {
       server: json['server'] as String?,
       port: _parsePort(json['port']),
       isActive: json['isActive'] as bool? ?? false,
-      groupId: _nullIfEmpty(json['groupId']),
-      subscriptionId: _nullIfEmpty(json['subscriptionId']),
+      groupId: json['groupId'] as String?,
+      subscriptionId: json['subscriptionId'] as String?,
     );
-  }
-
-  static String? _nullIfEmpty(Object? value) {
-    if (value is String && value.trim().isNotEmpty) {
-      return value;
-    }
-    return null;
   }
 
   static int? _parsePort(Object? value) {
@@ -116,4 +113,37 @@ class Profile {
 
     return null;
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+
+    return other is Profile &&
+        other.id == id &&
+        other.name == name &&
+        other.type == type &&
+        other.rawConfig == rawConfig &&
+        other.createdAt == createdAt &&
+        other.server == server &&
+        other.port == port &&
+        other.isActive == isActive &&
+        other.groupId == groupId &&
+        other.subscriptionId == subscriptionId;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        name,
+        type,
+        rawConfig,
+        createdAt,
+        server,
+        port,
+        isActive,
+        groupId,
+        subscriptionId,
+      );
 }
