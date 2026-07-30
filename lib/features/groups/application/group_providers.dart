@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/storage/local_storage_service.dart';
 import '../../profiles/application/profile_providers.dart';
-import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile.dart';
 import '../data/group_repository.dart';
 import '../data/local_group_repository.dart';
@@ -9,20 +9,25 @@ import '../domain/proxy_group.dart';
 
 final FutureProvider<GroupRepository> groupRepositoryProvider =
     FutureProvider<GroupRepository>((Ref ref) async {
-  final localStorage = await ref.watch(localStorageProvider.future);
-  return LocalGroupRepository(localStorage);
+  final LocalStorageService storage =
+      await ref.watch(localStorageProvider.future);
+  return LocalGroupRepository(storage);
 });
 
-class GroupsNotifier extends AsyncNotifier<List<ProxyGroup>> {
-  @override
-  Future<List<ProxyGroup>> build() async {
-    final GroupRepository repository =
-        await ref.watch(groupRepositoryProvider.future);
-    return repository.getGroups();
-  }
+final AsyncNotifierProvider<GroupsNotifier, List<ProxyGroup>> groupsProvider =
+    AsyncNotifierProvider<GroupsNotifier, List<ProxyGroup>>(
+  GroupsNotifier.new,
+);
 
+class GroupsNotifier extends AsyncNotifier<List<ProxyGroup>> {
   Future<GroupRepository> get _repository =>
       ref.read(groupRepositoryProvider.future);
+
+  @override
+  Future<List<ProxyGroup>> build() async {
+    final GroupRepository repository = await _repository;
+    return repository.getGroups();
+  }
 
   Future<void> _refresh() async {
     final GroupRepository repository = await _repository;
@@ -31,41 +36,42 @@ class GroupsNotifier extends AsyncNotifier<List<ProxyGroup>> {
 
   Future<ProxyGroup> createGroup(String name, {int? colorValue}) async {
     final GroupRepository repository = await _repository;
-    final List<ProxyGroup> existing = await repository.getGroups();
+    final List<ProxyGroup> current = await repository.getGroups();
 
     final ProxyGroup group = ProxyGroup(
       id: 'grp_${DateTime.now().microsecondsSinceEpoch}',
       name: name.trim().isEmpty ? 'Group' : name.trim(),
       createdAt: DateTime.now(),
       colorValue: colorValue,
-      sortOrder: existing.length,
+      sortOrder: current.length,
     );
 
     await repository.addGroup(group);
     await _refresh();
-
     return group;
   }
 
   Future<void> renameGroup(String groupId, String name) async {
     final GroupRepository repository = await _repository;
-    final List<ProxyGroup> groups = await repository.getGroups();
+    final List<ProxyGroup> current = await repository.getGroups();
     final int index =
-        groups.indexWhere((ProxyGroup item) => item.id == groupId);
+        current.indexWhere((ProxyGroup item) => item.id == groupId);
 
     if (index == -1) {
       return;
     }
 
-    await repository.updateGroup(groups[index].copyWith(name: name.trim()));
+    await repository.updateGroup(
+      current[index].copyWith(name: name.trim().isEmpty ? 'Group' : name.trim()),
+    );
     await _refresh();
   }
 
   Future<void> setColor(String groupId, int? colorValue) async {
     final GroupRepository repository = await _repository;
-    final List<ProxyGroup> groups = await repository.getGroups();
+    final List<ProxyGroup> current = await repository.getGroups();
     final int index =
-        groups.indexWhere((ProxyGroup item) => item.id == groupId);
+        current.indexWhere((ProxyGroup item) => item.id == groupId);
 
     if (index == -1) {
       return;
@@ -73,45 +79,35 @@ class GroupsNotifier extends AsyncNotifier<List<ProxyGroup>> {
 
     await repository.updateGroup(
       colorValue == null
-          ? groups[index].copyWith(clearColor: true)
-          : groups[index].copyWith(colorValue: colorValue),
+          ? current[index].copyWith(clearColor: true)
+          : current[index].copyWith(colorValue: colorValue),
     );
     await _refresh();
   }
 
   Future<void> toggleCollapsed(String groupId) async {
     final GroupRepository repository = await _repository;
-    final List<ProxyGroup> groups = await repository.getGroups();
+    final List<ProxyGroup> current = await repository.getGroups();
     final int index =
-        groups.indexWhere((ProxyGroup item) => item.id == groupId);
+        current.indexWhere((ProxyGroup item) => item.id == groupId);
 
     if (index == -1) {
       return;
     }
 
     await repository.updateGroup(
-      groups[index].copyWith(isCollapsed: !groups[index].isCollapsed),
+      current[index].copyWith(isCollapsed: !current[index].isCollapsed),
     );
     await _refresh();
   }
 
-  /// گروه حذف می‌شود اما پروفایل‌های عضو آن پاک نمی‌شوند و «بدون گروه» می‌شوند.
+  /// حذف گروه؛ پروفایل‌های داخل آن حذف نمی‌شوند و بدون گروه می‌مانند.
   Future<void> deleteGroup(String groupId) async {
     final GroupRepository repository = await _repository;
     await repository.deleteGroup(groupId);
 
-    final ProfileRepository profiles =
-        await ref.read(profileRepositoryProvider.future);
-    final List<Profile> all = await profiles.getProfiles();
-
-    for (final Profile profile in all) {
-      if (profile.groupId == groupId) {
-        await profiles.updateProfile(profile.copyWith(clearGroup: true));
-      }
-    }
-
+    await ref.read(profileGroupAssignerProvider).detachGroup(groupId);
     await _refresh();
-    ref.invalidate(profilesProvider);
   }
 
   Future<void> reorder(List<String> orderedIds) async {
@@ -121,19 +117,18 @@ class GroupsNotifier extends AsyncNotifier<List<ProxyGroup>> {
   }
 }
 
-final AsyncNotifierProvider<GroupsNotifier, List<ProxyGroup>> groupsProvider =
-    AsyncNotifierProvider<GroupsNotifier, List<ProxyGroup>>(
-  GroupsNotifier.new,
-);
-
-/// انتساب/جابه‌جایی پروفایل‌ها بین گروه‌ها (پشتیبانی از انتخاب چندگانه).
 final Provider<ProfileGroupAssigner> profileGroupAssignerProvider =
     Provider<ProfileGroupAssigner>((Ref ref) => ProfileGroupAssigner(ref));
 
+/// انتساب/برداشتن گروه روی پروفایل‌ها؛ از همان ProfilesNotifier استفاده می‌کند
+/// تا لیست پروفایل‌ها در UI هم بلافاصله تازه شود.
 class ProfileGroupAssigner {
   ProfileGroupAssigner(this._ref);
 
   final Ref _ref;
+
+  Future<List<Profile>> _profiles() =>
+      _ref.read(profilesProvider.future);
 
   Future<void> assign({
     required List<String> profileIds,
@@ -143,22 +138,30 @@ class ProfileGroupAssigner {
       return;
     }
 
-    final ProfileRepository profiles =
-        await _ref.read(profileRepositoryProvider.future);
-    final List<Profile> all = await profiles.getProfiles();
+    final List<Profile> profiles = await _profiles();
+    final ProfilesNotifier notifier = _ref.read(profilesProvider.notifier);
 
-    for (final Profile profile in all) {
+    for (final Profile profile in profiles) {
       if (!profileIds.contains(profile.id)) {
         continue;
       }
 
-      await profiles.updateProfile(
-        groupId == null
+      await notifier.updateProfile(
+        groupId == null || groupId.isEmpty
             ? profile.copyWith(clearGroup: true)
             : profile.copyWith(groupId: groupId),
       );
     }
+  }
 
-    _ref.invalidate(profilesProvider);
+  /// پس از حذف یک گروه، ارجاع‌های باقی‌مانده پاک می‌شوند.
+  Future<void> detachGroup(String groupId) async {
+    final List<Profile> profiles = await _profiles();
+    final List<String> affected = profiles
+        .where((Profile profile) => profile.groupId == groupId)
+        .map((Profile profile) => profile.id)
+        .toList();
+
+    await assign(profileIds: affected, groupId: null);
   }
 }

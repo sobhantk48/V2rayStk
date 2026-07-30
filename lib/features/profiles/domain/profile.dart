@@ -23,16 +23,15 @@ class Profile {
   final int? port;
   final bool isActive;
 
-  /// شناسه گروه؛ null یعنی «بدون گروه».
+  /// گروه دسته‌بندی؛ null یعنی بدون گروه.
   final String? groupId;
 
-  /// اگر پروفایل از یک لینک اشتراک آمده باشد، شناسه آن اشتراک.
+  /// اگر از لینک اشتراک آمده باشد، شناسه آن اشتراک.
   final String? subscriptionId;
 
-  bool get hasGroup => groupId != null && groupId!.isNotEmpty;
+  bool get hasGroup => (groupId ?? '').isNotEmpty;
 
-  bool get isFromSubscription =>
-      subscriptionId != null && subscriptionId!.isNotEmpty;
+  bool get isFromSubscription => (subscriptionId ?? '').isNotEmpty;
 
   Profile copyWith({
     String? id,
@@ -90,13 +89,13 @@ class Profile {
       server: json['server'] as String?,
       port: _parsePort(json['port']),
       isActive: json['isActive'] as bool? ?? false,
-      groupId: _parseNullableString(json['groupId']),
-      subscriptionId: _parseNullableString(json['subscriptionId']),
+      groupId: _nullIfEmpty(json['groupId']),
+      subscriptionId: _nullIfEmpty(json['subscriptionId']),
     );
   }
 
-  static String? _parseNullableString(Object? value) {
-    if (value is String && value.isNotEmpty) {
+  static String? _nullIfEmpty(Object? value) {
+    if (value is String && value.trim().isNotEmpty) {
       return value;
     }
     return null;
@@ -117,11 +116,4 @@ class Profile {
 
     return null;
   }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || (other is Profile && other.id == id);
-
-  @override
-  int get hashCode => id.hashCode;
 }
