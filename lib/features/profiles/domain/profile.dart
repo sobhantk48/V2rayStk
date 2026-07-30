@@ -31,6 +31,9 @@ class Profile {
 
   bool get hasGroup => groupId != null && groupId!.isNotEmpty;
 
+  bool get isFromSubscription =>
+      subscriptionId != null && subscriptionId!.isNotEmpty;
+
   Profile copyWith({
     String? id,
     String? name,
@@ -87,17 +90,16 @@ class Profile {
       server: json['server'] as String?,
       port: _parsePort(json['port']),
       isActive: json['isActive'] as bool? ?? false,
-      groupId: _emptyToNull(json['groupId'] as String?),
-      subscriptionId: _emptyToNull(json['subscriptionId'] as String?),
+      groupId: _parseNullableString(json['groupId']),
+      subscriptionId: _parseNullableString(json['subscriptionId']),
     );
   }
 
-  static String? _emptyToNull(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return null;
+  static String? _parseNullableString(Object? value) {
+    if (value is String && value.isNotEmpty) {
+      return value;
     }
-
-    return value;
+    return null;
   }
 
   static int? _parsePort(Object? value) {
@@ -115,4 +117,11 @@ class Profile {
 
     return null;
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is Profile && other.id == id);
+
+  @override
+  int get hashCode => id.hashCode;
 }
