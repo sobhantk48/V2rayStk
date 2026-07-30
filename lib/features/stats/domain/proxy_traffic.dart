@@ -69,15 +69,12 @@ class ProxyTraffic {
     if (value is int) {
       return value;
     }
-
     if (value is num) {
       return value.toInt();
     }
-
     if (value is String) {
       return int.tryParse(value) ?? 0;
     }
-
     return 0;
   }
 
@@ -99,16 +96,90 @@ class ProxyTraffic {
   }
 
   static String formatDuration(int seconds) {
-    final int h = seconds ~/ 3600;
-    final int m = (seconds % 3600) ~/ 60;
-    final int s = seconds % 60;
+    if (seconds <= 0) {
+      return '0s';
+    }
+    final int hours = seconds ~/ 3600;
+    final int minutes = (seconds % 3600) ~/ 60;
+    final int secs = seconds % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    }
+    if (minutes > 0) {
+      return '${minutes}m ${secs}s';
+    }
+    return '${secs}s';
+  }
+}
 
-    if (h > 0) {
-      return '${h}h ${m}m';
+/// معیارهای مرتب‌سازی لیست آمار پروکسی‌ها.
+enum StatsSort {
+  traffic,
+  connects,
+  duration,
+  lastUsed,
+  ping,
+}
+
+extension StatsSortX on StatsSort {
+  /// کلید ذخیره‌سازی/سریال‌سازی (برای SharedPreferences).
+  String get key {
+    switch (this) {
+      case StatsSort.traffic:
+        return 'traffic';
+      case StatsSort.connects:
+        return 'connects';
+      case StatsSort.duration:
+        return 'duration';
+      case StatsSort.lastUsed:
+        return 'lastUsed';
+      case StatsSort.ping:
+        return 'ping';
     }
-    if (m > 0) {
-      return '${m}m ${s}s';
+  }
+
+  static StatsSort fromKey(String? key) {
+    return StatsSort.values.firstWhere(
+      (StatsSort value) => value.key == key,
+      orElse: () => StatsSort.traffic,
+    );
+  }
+
+  /// برچسب دوزبانه؛ [isFa] را از locale فعلی بده.
+  String label(bool isFa) {
+    switch (this) {
+      case StatsSort.traffic:
+        return isFa ? 'مصرف داده' : 'Traffic';
+      case StatsSort.connects:
+        return isFa ? 'تعداد اتصال' : 'Connections';
+      case StatsSort.duration:
+        return isFa ? 'مدت اتصال' : 'Duration';
+      case StatsSort.lastUsed:
+        return isFa ? 'آخرین استفاده' : 'Last used';
+      case StatsSort.ping:
+        return isFa ? 'پینگ' : 'Ping';
     }
-    return '${s}s';
+  }
+
+  /// مقایسه‌گر نزولی (بهترین/بیشترین اول). برای ping صعودی است.
+  int compare(ProxyTraffic a, ProxyTraffic b) {
+    switch (this) {
+      case StatsSort.traffic:
+        return b.totalBytes.compareTo(a.totalBytes);
+      case StatsSort.connects:
+        return b.connectCount.compareTo(a.connectCount);
+      case StatsSort.duration:
+        return b.totalDurationSeconds.compareTo(a.totalDurationSeconds);
+      case StatsSort.lastUsed:
+        final DateTime aDate =
+            a.lastUsedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final DateTime bDate =
+            b.lastUsedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      case StatsSort.ping:
+        final int aPing = a.lastPingMs ?? 1 << 30;
+        final int bPing = b.lastPingMs ?? 1 << 30;
+        return aPing.compareTo(bPing);
+    }
   }
 }
