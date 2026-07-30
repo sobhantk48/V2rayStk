@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../features/stats/presentation/stats_screen.dart';
 import '../features/admin/presentation/admin_login_screen.dart';
 import '../features/admin/presentation/admin_panel_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
@@ -50,11 +49,6 @@ final GoRouter appRouter = GoRouter(
         return const NativeLogScreen();
       },
     ),
-    GoRoute(
-      path: '/stats',
-      builder: (context, state) => const StatsScreen(),
-    ),
-
     GoRoute(
       path: '/admin',
       builder: (BuildContext context, GoRouterState state) {
