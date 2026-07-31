@@ -25,6 +25,22 @@ class SettingsScreen extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/logs'),
           ),
+          ListTile(
+            leading: const Icon(Icons.bar_chart, color: Colors.lightBlueAccent),
+            title: const Text('Traffic Statistics'),
+            subtitle: const Text('آمار مصرف داده هر پروکسی'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/stats'),
+          ),
+          const Divider(height: 1),
+          const _SectionHeader('Profiles / پروفایل‌ها'),
+          ListTile(
+            leading: const Icon(Icons.folder_copy, color: Colors.amberAccent),
+            title: const Text('Groups'),
+            subtitle: const Text('مدیریت گروه‌ها و دسته‌بندی پروکسی‌ها'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/groups'),
+          ),
           const Divider(height: 1),
           const _SectionHeader('General / عمومی'),
           const ListTile(
