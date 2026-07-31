@@ -195,7 +195,7 @@ class SingBoxConfigGenerator {
           'stack': 'gvisor',
           'sniff': true,
           'sniff_override_destination': true,
-          'domain_strategy': 'ipv4_only',
+          'domain_strategy': 'prefer_ipv4',
         }
       ],
       'outbounds': [
@@ -207,7 +207,6 @@ class SingBoxConfigGenerator {
       'route': {
         'rules': [
           {'protocol': 'dns', 'outbound': 'dns-out'},
-          {'protocol': 'quic', 'outbound': 'block'},
           {
             'network': 'udp',
             'port': [443],
