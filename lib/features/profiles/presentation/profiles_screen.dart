@@ -7,7 +7,9 @@ import '../../../core/widgets/app_scaffold.dart';
 import '../../vpn/application/vpn_controller.dart';
 import '../application/profile_import_parser.dart';
 import '../application/profile_providers.dart';
+import '../application/latency_providers.dart';
 import '../domain/profile.dart';
+import 'ping_results_sheet.dart';
 
 class ProfilesScreen extends ConsumerStatefulWidget {
   const ProfilesScreen({super.key});
@@ -94,10 +96,53 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
                 onPressed: () => context.push('/groups'),
                 icon: const Icon(Icons.folder_outlined),
               ),
-              IconButton(
-                tooltip: 'Delete all',
-                onPressed: _confirmDeleteAll,
-                icon: const Icon(Icons.delete_sweep_outlined),
+              PopupMenuButton<String>(
+                tooltip: 'More / بیشتر',
+                icon: const Icon(Icons.more_vert),
+                onSelected: (String value) {
+                  switch (value) {
+                    case 'ping_all':
+                      _pingAll();
+                      break;
+                    case 'auto_select':
+                      _selectFastestServer();
+                      break;
+                    case 'delete_all':
+                      _confirmDeleteAll();
+                      break;
+                  }
+                },
+                itemBuilder: (BuildContext context) =>
+                    const <PopupMenuEntry<String>>[
+                  PopupMenuItem<String>(
+                    value: 'ping_all',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.network_check),
+                      title: Text('Ping all / تست همه'),
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'auto_select',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.bolt),
+                      title: Text('Auto select / انتخاب خودکار'),
+                    ),
+                  ),
+                  PopupMenuDivider(),
+                  PopupMenuItem<String>(
+                    value: 'delete_all',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_sweep_outlined),
+                      title: Text('Delete all / حذف همه'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -403,6 +448,58 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
       _toast('All profiles deleted.');
     }
   }
+
+  Future<void> _pingAll() async {
+    final List<Profile> profiles =
+        ref.read(profilesProvider).value ?? const <Profile>[];
+    if (profiles.isEmpty) {
+      _toast('No profile to test. / پروفایلی برای تست وجود ندارد.');
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) =>
+          PingResultsSheet(profiles: profiles),
+    );
+  }
+
+  Future<void> _selectFastestServer() async {
+    final List<Profile> profiles =
+        ref.read(profilesProvider).value ?? const <Profile>[];
+    if (profiles.isEmpty) {
+      _toast('No profile to test. / پروفایلی برای تست وجود ندارد.');
+      return;
+    }
+
+    _toast('Testing servers… / در حال تست سرورها…');
+    final LatencyNotifier notifier = ref.read(latencyProvider.notifier);
+    await notifier.pingAll(profiles);
+    if (!mounted) {
+      return;
+    }
+
+    final String? bestId = notifier.fastestProfileId();
+    if (bestId == null) {
+      _toast('No reachable server. / سرور قابل دسترسی پیدا نشد.');
+      return;
+    }
+
+    final Profile best = profiles.firstWhere(
+      (Profile profile) => profile.id == bestId,
+      orElse: () => profiles.first,
+    );
+    await ref.read(profilesProvider.notifier).activateProfile(best.id);
+    if (!mounted) {
+      return;
+    }
+
+    final int? latencyMs = ref.read(latencyProvider).latencyFor(best.id);
+    _toast('«${best.name}» selected — ${latencyMs ?? '-'} ms');
+  }
+
 
   void _toast(String message) {
     if (!mounted) {
