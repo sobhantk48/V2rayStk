@@ -168,4 +168,33 @@ class MainActivity : FlutterActivity() {
             pendingConfig = null
         }
     }
+
+    private fun statsSnapshot(): Map<String, Any> {
+        return runCatching {
+            mapOf(
+            "uplink" to CommandClientBridge.uplink,
+            "downlink" to CommandClientBridge.downlink,
+            "uplinkTotal" to CommandClientBridge.uplinkTotal,
+            "downlinkTotal" to CommandClientBridge.downlinkTotal,
+            "connectionsIn" to CommandClientBridge.connectionsIn,
+            "connectionsOut" to CommandClientBridge.connectionsOut,
+            "memory" to CommandClientBridge.memory,
+            "goroutines" to CommandClientBridge.goroutines
+        )
+        }.getOrElse { emptyMap() }
+    }
+
+    private fun measureLatency(host: String, port: Int, timeoutMs: Int): Int {
+        if (host.isBlank()) return -1
+        return try {
+            val socket = Socket()
+            val t0 = System.nanoTime()
+            socket.connect(InetSocketAddress(host, port), timeoutMs)
+            val elapsed = ((System.nanoTime() - t0) / 1000000L).toInt()
+            runCatching { socket.close() }
+            elapsed
+        } catch (e: Throwable) {
+            -1
+        }
+    }
 }

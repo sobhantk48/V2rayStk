@@ -75,7 +75,7 @@ class SingBoxConfigGenerator {
 
     if (security == 'reality' || pbk.isNotEmpty) {
       if (pbk.isEmpty) {
-        throw SingBoxConfigException('Public Key (pbk) برای Reality الزامی است');
+        throw const SingBoxConfigException('Public Key (pbk) برای Reality الزامی است');
       }
       outbound['tls'] = {
         'enabled': true,
@@ -202,6 +202,8 @@ class SingBoxConfigGenerator {
       'route': {
         'rules': [
           {'protocol': 'dns', 'outbound': 'dns-out'},
+          {'protocol': 'quic', 'outbound': 'block'},
+          {'network': 'udp', 'port': [443], 'outbound': 'block'},
           {'ip_is_private': true, 'outbound': 'direct'},
         ],
         'final': 'proxy',
