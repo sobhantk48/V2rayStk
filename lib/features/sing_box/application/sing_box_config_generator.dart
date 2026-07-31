@@ -170,7 +170,7 @@ class SingBoxConfigGenerator {
       },
       'dns': {
         'servers': [
-          {'tag': 'proxy-dns', 'address': 'tls://8.8.8.8', 'detour': 'proxy'},
+          {'tag': 'proxy-dns', 'address': 'tls://8.8.8.8', 'detour': 'proxy', 'address_resolver': 'local-dns', 'address_strategy': 'ipv4_only'},
           {'tag': 'local-dns', 'address': '223.5.5.5', 'detour': 'direct'},
           {'tag': 'block-dns', 'address': 'rcode://success'},
         ],
