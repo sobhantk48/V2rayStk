@@ -8,6 +8,7 @@ import '../features/groups/presentation/groups_manage_screen.dart';
 import '../features/logs/presentation/native_log_screen.dart';
 import '../features/profiles/presentation/profiles_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/speedtest/presentation/speed_test_screen.dart';
 import '../features/stats/presentation/stats_screen.dart';
 import '../features/subscriptions/presentation/subscriptions_screen.dart';
 
@@ -33,6 +34,18 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/stats',
+      builder: (BuildContext context, GoRouterState state) {
+        return const StatsScreen();
+      },
+    ),
+    GoRoute(
+      path: '/speedtest',
+      builder: (BuildContext context, GoRouterState state) {
+        return const SpeedTestScreen();
+      },
+    ),
+    GoRoute(
       path: '/subscriptions',
       builder: (BuildContext context, GoRouterState state) {
         return const SubscriptionsScreen();
@@ -42,12 +55,6 @@ final GoRouter appRouter = GoRouter(
       path: '/settings',
       builder: (BuildContext context, GoRouterState state) {
         return const SettingsScreen();
-      },
-    ),
-    GoRoute(
-      path: '/stats',
-      builder: (BuildContext context, GoRouterState state) {
-        return const StatsScreen();
       },
     ),
     GoRoute(
