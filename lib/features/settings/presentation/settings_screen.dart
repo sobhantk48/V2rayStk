@@ -25,23 +25,32 @@ class SettingsScreen extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/logs'),
           ),
-          ListTile(
-            leading: const Icon(Icons.bar_chart, color: Colors.lightBlueAccent),
-            title: const Text('Traffic Statistics'),
-            subtitle: const Text('آمار مصرف داده هر پروکسی'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/stats'),
-          ),
           const Divider(height: 1),
-          const _SectionHeader('Profiles / پروفایل‌ها'),
+
+          const _SectionHeader('Tools / ابزارها'),
           ListTile(
-            leading: const Icon(Icons.folder_copy, color: Colors.amberAccent),
-            title: const Text('Groups'),
-            subtitle: const Text('مدیریت گروه‌ها و دسته‌بندی پروکسی‌ها'),
+            leading: const Icon(Icons.folder_copy, color: Colors.orangeAccent),
+            title: const Text('Proxy Groups'),
+            subtitle: const Text('مدیریت گروه‌های پروکسی'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/groups'),
           ),
+          ListTile(
+            leading: const Icon(Icons.bar_chart, color: Colors.lightBlueAccent),
+            title: const Text('Traffic Statistics'),
+            subtitle: const Text('آمار مصرف هر پروکسی'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/stats'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.speed, color: Colors.purpleAccent),
+            title: const Text('Speed Test'),
+            subtitle: const Text('تست سرعت و کیفیت اتصال'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/speedtest'),
+          ),
           const Divider(height: 1),
+
           const _SectionHeader('General / عمومی'),
           const ListTile(
             leading: Icon(Icons.language),
@@ -57,6 +66,7 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => context.push('/admin'),
           ),
           const Divider(height: 1),
+
           const _SectionHeader('About / درباره'),
           const ListTile(
             leading: Icon(Icons.info_outline),
