@@ -8,9 +8,9 @@ const List<Locale> kSupportedLocales = <Locale>[
   Locale('en'),
 ];
 
-/// نگه‌دارنده زبان انتخابی کاربر با ذخیره‌سازی محلی.
-/// مقدار null یعنی «پیروی از زبان سیستم».
-class LocaleController extends StateNotifier<Locale?> {
+/// تنها منبع حقیقت برای زبان برنامه.
+/// هیچ provider دیگری نباید زبان را نگه دارد.
+class LocaleController extends StateNotifier<Locale> {
   LocaleController() : super(const Locale('fa')) {
     _load();
   }
@@ -20,28 +20,44 @@ class LocaleController extends StateNotifier<Locale?> {
   Future<void> _load() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? code = prefs.getString(_storageKey);
-    if (code == null || code == 'system') {
-      state = null;
+    if (code == null) {
       return;
     }
-    if (code == 'fa' || code == 'en') {
+    if (_isSupported(code)) {
       state = Locale(code);
     }
   }
 
-  Future<void> setLocale(Locale? locale) async {
-    if (locale?.languageCode == state?.languageCode) {
-      return;
+  static bool _isSupported(String code) {
+    for (final Locale locale in kSupportedLocales) {
+      if (locale.languageCode == code) {
+        return true;
+      }
     }
-    state = locale;
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey, locale?.languageCode ?? 'system');
+    return false;
   }
 
-  bool get isFa => (state ?? const Locale('fa')).languageCode == 'fa';
+  Future<void> setLocale(Locale locale) async {
+    await setLanguageCode(locale.languageCode);
+  }
+
+  Future<void> setLanguageCode(String code) async {
+    if (!_isSupported(code) || code == state.languageCode) {
+      return;
+    }
+    state = Locale(code);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_storageKey, code);
+  }
+
+  Future<void> toggle() async {
+    await setLanguageCode(isFa ? 'en' : 'fa');
+  }
+
+  bool get isFa => state.languageCode == 'fa';
 }
 
-final StateNotifierProvider<LocaleController, Locale?> localeControllerProvider =
-    StateNotifierProvider<LocaleController, Locale?>(
+final StateNotifierProvider<LocaleController, Locale> localeControllerProvider =
+    StateNotifierProvider<LocaleController, Locale>(
   (Ref ref) => LocaleController(),
 );

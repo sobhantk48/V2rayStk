@@ -124,7 +124,7 @@ class SettingsScreen extends ConsumerWidget {
 
     if (code == null) return;
     final Locale? next = code == 'system' ? null : Locale(code);
-    await ref.read(localeControllerProvider.notifier).setLocale(next);
+    await ref.read(localeControllerProvider.notifier).setLocale(next!);
   }
 }
 
