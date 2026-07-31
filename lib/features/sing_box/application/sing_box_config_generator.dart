@@ -170,7 +170,7 @@ class SingBoxConfigGenerator {
       },
       'dns': {
         'servers': [
-          {'tag': 'proxy-dns', 'address': 'tls://8.8.8.8', 'detour': 'proxy', 'address_resolver': 'local-dns', 'address_strategy': 'ipv4_only'},
+          {'tag': 'proxy-dns', 'address': 'tls://8.8.8.8', 'detour': 'proxy', 'address_resolver': 'local-dns', 'address_strategy': 'prefer_ipv4'},
           {'tag': 'local-dns', 'address': '223.5.5.5', 'detour': 'direct'},
           {'tag': 'block-dns', 'address': 'rcode://success'},
         ],
@@ -192,7 +192,7 @@ class SingBoxConfigGenerator {
           'auto_route': true,
           'strict_route': true,
           'endpoint_independent_nat': true,
-          'stack': 'gvisor',
+          'stack': 'system',
           'sniff': true,
           'sniff_override_destination': true,
           'domain_strategy': 'prefer_ipv4',
@@ -210,7 +210,7 @@ class SingBoxConfigGenerator {
           {
             'network': 'udp',
             'port': [443],
-            'outbound': 'block'
+            'action': 'reject', 'method': 'default', 'no_drop': true
           },
           {'ip_is_private': true, 'outbound': 'direct'},
         ],
