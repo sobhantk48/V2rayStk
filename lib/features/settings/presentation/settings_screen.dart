@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:v2ray_stk/app/locale_controller.dart';
 import 'package:v2ray_stk/core/widgets/app_scaffold.dart';
+import 'package:v2ray_stk/features/settings/application/app_settings.dart';
 import 'package:v2ray_stk/l10n/strings.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final Strings strings = Strings.of(context);
+    final Locale? currentLocale = ref.watch(localeControllerProvider);
+    final AppSettings settings = ref.watch(appSettingsProvider);
 
     return AppScaffold(
       title: 'Settings',
@@ -26,37 +31,28 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => context.push('/logs'),
           ),
           const Divider(height: 1),
-
-          const _SectionHeader('Tools / ابزارها'),
-          ListTile(
-            leading: const Icon(Icons.folder_copy, color: Colors.orangeAccent),
-            title: const Text('Proxy Groups'),
-            subtitle: const Text('مدیریت گروه‌های پروکسی'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/groups'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.bar_chart, color: Colors.lightBlueAccent),
-            title: const Text('Traffic Statistics'),
-            subtitle: const Text('آمار مصرف هر پروکسی'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/stats'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.speed, color: Colors.purpleAccent),
-            title: const Text('Speed Test'),
-            subtitle: const Text('تست سرعت و کیفیت اتصال'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/speedtest'),
-          ),
-          const Divider(height: 1),
-
           const _SectionHeader('General / عمومی'),
-          const ListTile(
-            leading: Icon(Icons.language),
-            title: Text('Language / زبان'),
-            subtitle: Text('فارسی / English'),
-            trailing: Icon(Icons.chevron_right),
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: const Text('Language / زبان'),
+            subtitle: Text(_localeLabel(currentLocale)),
+            trailing: const Icon(Icons.keyboard_arrow_down),
+            onTap: () => _pickLanguage(context, ref, currentLocale),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.fingerprint),
+            title: const Text('Biometric Lock / قفل بیومتریک'),
+            subtitle: const Text('باز کردن اپ با اثر انگشت یا چهره'),
+            value: settings.biometricLock,
+            onChanged: (bool v) =>
+                ref.read(appSettingsProvider.notifier).setBiometricLock(v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.vibration),
+            title: const Text('Haptic Feedback / بازخورد لمسی'),
+            value: settings.hapticEnabled,
+            onChanged: (bool v) =>
+                ref.read(appSettingsProvider.notifier).setHaptic(v),
           ),
           ListTile(
             leading: const Icon(Icons.admin_panel_settings),
@@ -66,7 +62,6 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => context.push('/admin'),
           ),
           const Divider(height: 1),
-
           const _SectionHeader('About / درباره'),
           const ListTile(
             leading: Icon(Icons.info_outline),
@@ -76,6 +71,60 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _localeLabel(Locale? locale) {
+    if (locale == null) return 'System / سیستم';
+    if (locale.languageCode == 'fa') return 'فارسی';
+    return 'English';
+  }
+
+  Future<void> _pickLanguage(
+    BuildContext context,
+    WidgetRef ref,
+    Locale? current,
+  ) async {
+    final String? code = await showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(height: 8),
+              const Text(
+                'Language / زبان',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              RadioListTile<String>(
+                value: 'system',
+                groupValue: current?.languageCode ?? 'system',
+                title: const Text('System / سیستم'),
+                onChanged: (String? v) => Navigator.pop(ctx, v),
+              ),
+              RadioListTile<String>(
+                value: 'fa',
+                groupValue: current?.languageCode ?? 'system',
+                title: const Text('فارسی'),
+                onChanged: (String? v) => Navigator.pop(ctx, v),
+              ),
+              RadioListTile<String>(
+                value: 'en',
+                groupValue: current?.languageCode ?? 'system',
+                title: const Text('English'),
+                onChanged: (String? v) => Navigator.pop(ctx, v),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (code == null) return;
+    final Locale? next = code == 'system' ? null : Locale(code);
+    await ref.read(localeControllerProvider.notifier).setLocale(next);
   }
 }
 

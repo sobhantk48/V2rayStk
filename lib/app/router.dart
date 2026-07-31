@@ -28,6 +28,18 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/subscriptions',
+      builder: (BuildContext context, GoRouterState state) {
+        return const SubscriptionsScreen();
+      },
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (BuildContext context, GoRouterState state) {
+        return const SettingsScreen();
+      },
+    ),
+    GoRoute(
       path: '/groups',
       builder: (BuildContext context, GoRouterState state) {
         return const GroupsManageScreen();
@@ -43,18 +55,6 @@ final GoRouter appRouter = GoRouter(
       path: '/speedtest',
       builder: (BuildContext context, GoRouterState state) {
         return const SpeedTestScreen();
-      },
-    ),
-    GoRoute(
-      path: '/subscriptions',
-      builder: (BuildContext context, GoRouterState state) {
-        return const SubscriptionsScreen();
-      },
-    ),
-    GoRoute(
-      path: '/settings',
-      builder: (BuildContext context, GoRouterState state) {
-        return const SettingsScreen();
       },
     ),
     GoRoute(

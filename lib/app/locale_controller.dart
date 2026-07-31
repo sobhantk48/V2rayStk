@@ -9,7 +9,8 @@ const List<Locale> kSupportedLocales = <Locale>[
 ];
 
 /// نگه‌دارنده زبان انتخابی کاربر با ذخیره‌سازی محلی.
-class LocaleController extends StateNotifier<Locale> {
+/// مقدار null یعنی «پیروی از زبان سیستم».
+class LocaleController extends StateNotifier<Locale?> {
   LocaleController() : super(const Locale('fa')) {
     _load();
   }
@@ -19,7 +20,8 @@ class LocaleController extends StateNotifier<Locale> {
   Future<void> _load() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? code = prefs.getString(_storageKey);
-    if (code == null) {
+    if (code == null || code == 'system') {
+      state = null;
       return;
     }
     if (code == 'fa' || code == 'en') {
@@ -27,19 +29,19 @@ class LocaleController extends StateNotifier<Locale> {
     }
   }
 
-  Future<void> setLocale(Locale locale) async {
-    if (locale.languageCode == state.languageCode) {
+  Future<void> setLocale(Locale? locale) async {
+    if (locale?.languageCode == state?.languageCode) {
       return;
     }
     state = locale;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey, locale.languageCode);
+    await prefs.setString(_storageKey, locale?.languageCode ?? 'system');
   }
 
-  bool get isFa => state.languageCode == 'fa';
+  bool get isFa => (state ?? const Locale('fa')).languageCode == 'fa';
 }
 
-final StateNotifierProvider<LocaleController, Locale> localeControllerProvider =
-    StateNotifierProvider<LocaleController, Locale>(
+final StateNotifierProvider<LocaleController, Locale?> localeControllerProvider =
+    StateNotifierProvider<LocaleController, Locale?>(
   (Ref ref) => LocaleController(),
 );
