@@ -46,28 +46,37 @@ class V2rayVpnService : VpnService() {
             // اگر VPN قطع شده، دیگر تلاش نکن
             if (tunInterface == null) return
 
-            if (!bridgeStarted) {
-                runCatching { CommandClientBridge.start() }
-                    .onSuccess {
-                        bridgeStarted = true
-                        Log.d(TAG, "CommandClientBridge.start() فراخوانی شد")
-                    }
-                    .onFailure { t ->
-                        Log.w(TAG, "CommandClientBridge.start() failed: ${t.message}")
-                    }
+            // مرحله ۱: سلامت bridgeی که در tick قبل start شده را بسنج
+            val healthy = runCatching { CommandClientBridge.hasData }.getOrDefault(false)
+            if (healthy) {
+                Log.d(TAG, "bridge سالم است و داده دریافت می‌شود")
+                return
             }
 
-            // اگر بعد از start هنوز داده‌ای نرسیده، دوباره تلاش کن
-            val healthy = runCatching { CommandClientBridge.hasData }.getOrDefault(false)
-            if (!healthy && bridgeRetry < BRIDGE_MAX_RETRY) {
-                bridgeRetry++
-                Log.d(TAG, "bridge بدون داده، تلاش مجدد #$bridgeRetry")
+            // مرحله ۲: اگر start شده بود ولی در طول یک بازه کامل داده نداد، ری‌استارتش کن
+            if (bridgeStarted) {
+                Log.d(TAG, "bridge بدون داده بعد از ${BRIDGE_RETRY_MS}ms، ری‌استارت")
                 runCatching { CommandClientBridge.stop() }
                 bridgeStarted = false
-                mainHandler.postDelayed(this, BRIDGE_RETRY_MS)
-            } else if (healthy) {
-                Log.d(TAG, "bridge سالم است و داده دریافت می‌شود")
             }
+
+            if (bridgeRetry >= BRIDGE_MAX_RETRY) {
+                Log.w(TAG, "bridge پس از $BRIDGE_MAX_RETRY تلاش داده‌ای نداد، توقف تلاش")
+                return
+            }
+
+            // مرحله ۳: یک تلاش تازه، و ارزیابی نتیجه‌اش در tick بعدی
+            bridgeRetry++
+            runCatching { CommandClientBridge.start() }
+                .onSuccess {
+                    bridgeStarted = true
+                    Log.d(TAG, "CommandClientBridge.start() تلاش #$bridgeRetry")
+                }
+                .onFailure { t ->
+                    Log.w(TAG, "CommandClientBridge.start() failed: ${t.message}")
+                }
+
+            mainHandler.postDelayed(this, BRIDGE_RETRY_MS)
         }
     }
 
