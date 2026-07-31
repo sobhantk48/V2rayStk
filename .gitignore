@@ -77,3 +77,4 @@ android/app/libs/*.aar
 
 # اسکریپت‌های موقتی پچ
 patch_*.py
+patch_*.py
