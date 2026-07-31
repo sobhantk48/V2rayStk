@@ -1,229 +1,144 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/widgets/app_scaffold.dart';
+import '../../profiles/application/profile_providers.dart';
+import '../../profiles/domain/profile.dart';
 import '../application/proxy_traffic_providers.dart';
 import '../domain/proxy_traffic.dart';
 
-/// صفحه آمار مصرف هر پروکسی (Per-Proxy Traffic Stats)
-class StatsScreen extends ConsumerStatefulWidget {
+/// آمار مصرف هر پروکسی به‌صورت جداگانه (Per-Proxy Traffic Stats).
+class StatsScreen extends ConsumerWidget {
   const StatsScreen({super.key});
 
-  @override
-  ConsumerState<StatsScreen> createState() => _StatsScreenState();
-}
-
-class _StatsScreenState extends ConsumerState<StatsScreen> {
-  StatsSort _sort = StatsSort.traffic;
-
-  bool _isFa(BuildContext context) =>
-      Localizations.localeOf(context).languageCode == 'fa';
-
-  String _sortLabel(StatsSort sort, bool fa) {
-    switch (sort) {
-      case StatsSort.traffic:
-        return fa ? 'بیشترین مصرف' : 'Most traffic';
-      case StatsSort.connects:
-        return fa ? 'تعداد اتصال' : 'Connections';
-      case StatsSort.duration:
-        return fa ? 'مدت اتصال' : 'Duration';
-      case StatsSort.lastUsed:
-        return fa ? 'آخرین استفاده' : 'Last used';
-      case StatsSort.ping:
-        return fa ? 'کمترین پینگ' : 'Lowest ping';
+  static String formatDuration(int totalSeconds) {
+    if (totalSeconds <= 0) {
+      return '-';
     }
+
+    final int hours = totalSeconds ~/ 3600;
+    final int minutes = (totalSeconds % 3600) ~/ 60;
+    final int seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    }
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    }
+    return '${seconds}s';
   }
 
-  String _fmtDuration(int seconds, bool fa) {
-    if (seconds <= 0) return fa ? '۰ ثانیه' : '0s';
-    final int h = seconds ~/ 3600;
-    final int m = (seconds % 3600) ~/ 60;
-    final int s = seconds % 60;
-    if (h > 0) return fa ? '$h ساعت $m دقیقه' : '${h}h ${m}m';
-    if (m > 0) return fa ? '$m دقیقه $s ثانیه' : '${m}m ${s}s';
-    return fa ? '$s ثانیه' : '${s}s';
+  static String formatDate(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    final DateTime local = value.toLocal();
+    final String month = local.month.toString().padLeft(2, '0');
+    final String day = local.day.toString().padLeft(2, '0');
+    final String hour = local.hour.toString().padLeft(2, '0');
+    final String minute = local.minute.toString().padLeft(2, '0');
+
+    return '$month/$day $hour:$minute';
   }
 
-  String _fmtLastUsed(DateTime? at, bool fa) {
-    if (at == null) return fa ? 'هرگز' : 'Never';
-    final Duration diff = DateTime.now().difference(at);
-    if (diff.inMinutes < 1) return fa ? 'همین حالا' : 'Just now';
-    if (diff.inHours < 1) {
-      return fa ? '${diff.inMinutes} دقیقه پیش' : '${diff.inMinutes}m ago';
-    }
-    if (diff.inDays < 1) {
-      return fa ? '${diff.inHours} ساعت پیش' : '${diff.inHours}h ago';
-    }
-    return fa ? '${diff.inDays} روز پیش' : '${diff.inDays}d ago';
-  }
-
-  Future<void> _confirmResetAll(bool fa) async {
-    final bool? ok = await showDialog<bool>(
+  Future<void> _confirmResetAll(BuildContext context, WidgetRef ref) async {
+    final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: Text(fa ? 'پاک کردن همه آمار؟' : 'Reset all stats?'),
-        content: Text(
-          fa
-              ? 'تمام آمار مصرف پروکسی‌ها حذف می‌شود. این عمل قابل بازگشت نیست.'
-              : 'All per-proxy usage stats will be deleted. This cannot be undone.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(fa ? 'انصراف' : 'Cancel'),
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Reset all stats?'),
+          content: const Text(
+            'همهٔ آمار مصرف پاک می‌شود. این عمل قابل بازگشت نیست.',
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(fa ? 'پاک کن' : 'Reset'),
-          ),
-        ],
-      ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Reset'),
+            ),
+          ],
+        );
+      },
     );
 
-    if (ok == true) {
+    if (confirmed == true) {
       await ref.read(proxyTrafficProvider.notifier).resetAll();
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final bool fa = _isFa(context);
-    final AsyncValue<List<ProxyTraffic>> state = ref.watch(proxyTrafficProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<List<ProxyTraffic>> trafficAsync =
+        ref.watch(proxyTrafficProvider);
+    final List<Profile> profiles =
+        ref.watch(profilesProvider).value ?? <Profile>[];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(fa ? 'آمار مصرف' : 'Traffic Stats'),
-        actions: <Widget>[
-          PopupMenuButton<StatsSort>(
-            icon: const Icon(Icons.sort),
-            tooltip: fa ? 'مرتب‌سازی' : 'Sort',
-            initialValue: _sort,
-            onSelected: (StatsSort value) => setState(() => _sort = value),
-            itemBuilder: (BuildContext ctx) => StatsSort.values
-                .map(
-                  (StatsSort s) => PopupMenuItem<StatsSort>(
-                    value: s,
-                    child: Text(_sortLabel(s, fa)),
-                  ),
-                )
-                .toList(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_sweep_outlined),
-            tooltip: fa ? 'پاک کردن همه' : 'Reset all',
-            onPressed: () => _confirmResetAll(fa),
-          ),
-        ],
-      ),
-      body: state.when(
+    final Map<String, String> names = <String, String>{
+      for (final Profile profile in profiles) profile.id: profile.name,
+    };
+
+    return AppScaffold(
+      title: 'Traffic Stats',
+      currentIndex: 0,
+      body: trafficAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (Object e, StackTrace _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              fa ? 'خطا در بارگذاری آمار:\n$e' : 'Failed to load stats:\n$e',
-              textAlign: TextAlign.center,
-            ),
-          ),
+        error: (Object error, StackTrace stackTrace) => Center(
+          child: Text('خطا در خواندن آمار: $error'),
         ),
         data: (List<ProxyTraffic> items) {
-          if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  const Icon(Icons.insights_outlined, size: 56),
-                  const SizedBox(height: 12),
-                  Text(
-                    fa
-                        ? 'هنوز آماری ثبت نشده است'
-                        : 'No usage recorded yet',
-                  ),
-                ],
+          final List<ProxyTraffic> sorted = <ProxyTraffic>[...items]
+            ..sort((ProxyTraffic a, ProxyTraffic b) =>
+                b.totalBytes.compareTo(a.totalBytes));
+
+          final int totalUp = sorted.fold<int>(
+            0,
+            (int sum, ProxyTraffic item) => sum + item.uploadBytes,
+          );
+          final int totalDown = sorted.fold<int>(
+            0,
+            (int sum, ProxyTraffic item) => sum + item.downloadBytes,
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _SummaryCard(
+                uploadBytes: totalUp,
+                downloadBytes: totalDown,
+                profileCount: sorted.length,
+                onResetAll: sorted.isEmpty
+                    ? null
+                    : () => _confirmResetAll(context, ref),
               ),
-            );
-          }
+              const SizedBox(height: 12),
+              Expanded(
+                child: sorted.isEmpty
+                    ? const Center(
+                        child: Text('هنوز آماری ثبت نشده است.'),
+                      )
+                    : ListView.separated(
+                        itemCount: sorted.length,
+                        separatorBuilder: (BuildContext context, int index) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (BuildContext context, int index) {
+                          final ProxyTraffic item = sorted[index];
 
-          final List<ProxyTraffic> sorted = List<ProxyTraffic>.of(items)
-            ..sort(_sort.compare);
-
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(proxyTrafficProvider),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: sorted.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (BuildContext ctx, int index) {
-                final ProxyTraffic t = sorted[index];
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: Text(
-                                t.profileId,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(ctx).textTheme.titleMedium,
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.restart_alt, size: 20),
-                              tooltip: fa ? 'صفر کردن' : 'Reset',
-                              onPressed: () => ref
-                                  .read(proxyTrafficProvider.notifier)
-                                  .reset(t.profileId),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 14,
-                          runSpacing: 6,
-                          children: <Widget>[
-                            _Chip(
-                              icon: Icons.swap_vert,
-                              text: ProxyTraffic.formatBytes(t.totalBytes),
-                            ),
-                            _Chip(
-                              icon: Icons.upload,
-                              text: ProxyTraffic.formatBytes(t.uploadBytes),
-                            ),
-                            _Chip(
-                              icon: Icons.download,
-                              text: ProxyTraffic.formatBytes(t.downloadBytes),
-                            ),
-                            _Chip(
-                              icon: Icons.link,
-                              text: fa
-                                  ? '${t.connectCount} بار'
-                                  : '${t.connectCount}x',
-                            ),
-                            _Chip(
-                              icon: Icons.timer_outlined,
-                              text: _fmtDuration(t.totalDurationSeconds, fa),
-                            ),
-                            _Chip(
-                              icon: Icons.network_ping,
-                              text: t.lastPingMs == null
-                                  ? '—'
-                                  : '${t.lastPingMs} ms',
-                            ),
-                            _Chip(
-                              icon: Icons.history,
-                              text: _fmtLastUsed(t.lastUsedAt, fa),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+                          return _TrafficTile(
+                            traffic: item,
+                            name: names[item.profileId] ?? item.profileId,
+                            onReset: () => ref
+                                .read(proxyTrafficProvider.notifier)
+                                .reset(item.profileId),
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),
@@ -231,21 +146,166 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip({required this.icon, required this.text});
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({
+    required this.uploadBytes,
+    required this.downloadBytes,
+    required this.profileCount,
+    required this.onResetAll,
+  });
 
-  final IconData icon;
-  final String text;
+  final int uploadBytes;
+  final int downloadBytes;
+  final int profileCount;
+  final VoidCallback? onResetAll;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    final ThemeData theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'Total usage',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  onPressed: onResetAll,
+                  tooltip: 'Reset all',
+                  icon: const Icon(Icons.delete_sweep_outlined),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _Metric(
+                    icon: Icons.arrow_downward,
+                    label: 'Download',
+                    value: ProxyTraffic.formatBytes(downloadBytes),
+                    color: Colors.green,
+                  ),
+                ),
+                Expanded(
+                  child: _Metric(
+                    icon: Icons.arrow_upward,
+                    label: 'Upload',
+                    value: ProxyTraffic.formatBytes(uploadBytes),
+                    color: Colors.blue,
+                  ),
+                ),
+                Expanded(
+                  child: _Metric(
+                    icon: Icons.dns_outlined,
+                    label: 'Proxies',
+                    value: '$profileCount',
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Metric extends StatelessWidget {
+  const _Metric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Column(
       children: <Widget>[
-        Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(width: 4),
-        Text(text, style: Theme.of(context).textTheme.bodySmall),
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(value, style: theme.textTheme.titleSmall),
+        Text(label, style: theme.textTheme.bodySmall),
       ],
+    );
+  }
+}
+
+class _TrafficTile extends StatelessWidget {
+  const _TrafficTile({
+    required this.traffic,
+    required this.name,
+    required this.onReset,
+  });
+
+  final ProxyTraffic traffic;
+  final String name;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: <Widget>[
+              Text(
+                '↓ ${ProxyTraffic.formatBytes(traffic.downloadBytes)}',
+                style: theme.textTheme.bodySmall,
+              ),
+              Text(
+                '↑ ${ProxyTraffic.formatBytes(traffic.uploadBytes)}',
+                style: theme.textTheme.bodySmall,
+              ),
+              Text(
+                'Ping: ${traffic.lastPingMs == null ? '-' : '${traffic.lastPingMs} ms'}',
+                style: theme.textTheme.bodySmall,
+              ),
+              Text(
+                'Time: ${StatsScreen.formatDuration(traffic.totalDurationSeconds)}',
+                style: theme.textTheme.bodySmall,
+              ),
+              Text(
+                'Connects: ${traffic.connectCount}',
+                style: theme.textTheme.bodySmall,
+              ),
+              Text(
+                'Last: ${StatsScreen.formatDate(traffic.lastUsedAt)}',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        trailing: IconButton(
+          onPressed: onReset,
+          tooltip: 'Reset',
+          icon: const Icon(Icons.restart_alt),
+        ),
+      ),
     );
   }
 }

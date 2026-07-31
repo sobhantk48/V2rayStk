@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/app_scaffold.dart';
 import '../../vpn/application/vpn_controller.dart';
@@ -88,6 +89,11 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Groups',
+                onPressed: () => context.push('/groups'),
+                icon: const Icon(Icons.folder_outlined),
+              ),
               IconButton(
                 tooltip: 'Delete all',
                 onPressed: _confirmDeleteAll,
