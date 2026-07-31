@@ -99,7 +99,8 @@ class SpeedTestScreen extends ConsumerWidget {
                         child: _Metric(
                           icon: Icons.arrow_downward,
                           label: 'Download',
-                          value: '${state.downloadMbps.toStringAsFixed(1)} Mbps',
+                          value:
+                              '${state.downloadMbps.toStringAsFixed(1)} Mbps',
                         ),
                       ),
                       Expanded(
@@ -172,7 +173,8 @@ class SpeedTestScreen extends ConsumerWidget {
               ),
             ),
           ),
-          if (state.phase == SpeedTestPhase.error && state.error != null) ...<Widget>[
+          if (state.phase == SpeedTestPhase.error &&
+              state.error != null) ...<Widget>[
             const SizedBox(height: 12),
             Card(
               color: theme.colorScheme.errorContainer,

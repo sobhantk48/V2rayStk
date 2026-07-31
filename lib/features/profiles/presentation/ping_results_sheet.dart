@@ -39,7 +39,8 @@ class _PingResultsSheetState extends ConsumerState<PingResultsSheet> {
   }
 
   Future<void> _activateFastest() async {
-    final String? bestId = ref.read(latencyProvider.notifier).fastestProfileId();
+    final String? bestId =
+        ref.read(latencyProvider.notifier).fastestProfileId();
     if (bestId == null) {
       return;
     }

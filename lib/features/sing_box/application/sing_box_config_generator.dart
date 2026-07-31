@@ -13,7 +13,8 @@ class SingBoxConfigGenerator {
 
   SingBoxConfig generate(Profile profile) {
     try {
-      final Map<String, dynamic>? json = _tryDecodeJsonObject(profile.rawConfig);
+      final Map<String, dynamic>? json =
+          _tryDecodeJsonObject(profile.rawConfig);
 
       if (json != null) {
         if (_looksLikeSingBoxConfig(json)) {
@@ -75,7 +76,8 @@ class SingBoxConfigGenerator {
 
     if (security == 'reality' || pbk.isNotEmpty) {
       if (pbk.isEmpty) {
-        throw const SingBoxConfigException('Public Key (pbk) برای Reality الزامی است');
+        throw const SingBoxConfigException(
+            'Public Key (pbk) برای Reality الزامی است');
       }
       outbound['tls'] = {
         'enabled': true,
@@ -105,7 +107,8 @@ class SingBoxConfigGenerator {
     return outbound;
   }
 
-  void _addTransport(Map<String, dynamic> outbound, Map<String, String> params) {
+  void _addTransport(
+      Map<String, dynamic> outbound, Map<String, String> params) {
     final type = params['type'] ?? '';
     if (type == 'ws') {
       outbound['transport'] = {
@@ -203,7 +206,11 @@ class SingBoxConfigGenerator {
         'rules': [
           {'protocol': 'dns', 'outbound': 'dns-out'},
           {'protocol': 'quic', 'outbound': 'block'},
-          {'network': 'udp', 'port': [443], 'outbound': 'block'},
+          {
+            'network': 'udp',
+            'port': [443],
+            'outbound': 'block'
+          },
           {'ip_is_private': true, 'outbound': 'direct'},
         ],
         'final': 'proxy',
@@ -224,7 +231,8 @@ class SingBoxConfigGenerator {
       json.containsKey('outbounds') || json.containsKey('inbounds');
 
   Map<String, dynamic> _adoptSingBoxConfig(Map<String, dynamic> json) {
-    if (json.containsKey('outbounds') && (json['outbounds'] as List).isNotEmpty) {
+    if (json.containsKey('outbounds') &&
+        (json['outbounds'] as List).isNotEmpty) {
       return json['outbounds'][0];
     }
     return json;

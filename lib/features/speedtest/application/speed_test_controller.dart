@@ -59,8 +59,7 @@ class SpeedTestController extends StateNotifier<SpeedTestState> {
   // فاز ۱: پینگ + جیتر + پکت‌لاس
   // ---------------------------------------------------------------
   Future<void> _runPingPhase() async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 5);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     final pings = <double>[];
     var lostCount = 0;
 
@@ -86,9 +85,8 @@ class SpeedTestController extends StateNotifier<SpeedTestState> {
       client.close(force: true);
     }
 
-    final avgPing = pings.isEmpty
-        ? 0.0
-        : pings.reduce((a, b) => a + b) / pings.length;
+    final avgPing =
+        pings.isEmpty ? 0.0 : pings.reduce((a, b) => a + b) / pings.length;
 
     state = state.copyWith(
       phase: SpeedTestPhase.download,
@@ -188,8 +186,7 @@ class SpeedTestController extends StateNotifier<SpeedTestState> {
 
         // در هر درخواست ۴ مگابایت می‌فرستیم
         for (var i = 0; i < 16; i++) {
-          if (_cancelled ||
-              sw.elapsedMilliseconds >= _uploadSeconds * 1000) {
+          if (_cancelled || sw.elapsedMilliseconds >= _uploadSeconds * 1000) {
             break;
           }
           req.add(chunk);
@@ -204,8 +201,7 @@ class SpeedTestController extends StateNotifier<SpeedTestState> {
           lastSpeed = totalBytes * 8 / (elapsed * 1024 * 1024);
           state = state.copyWith(
             currentSpeedMbps: lastSpeed,
-            progress:
-                0.66 + (elapsed / _uploadSeconds).clamp(0.0, 1.0) * 0.34,
+            progress: 0.66 + (elapsed / _uploadSeconds).clamp(0.0, 1.0) * 0.34,
           );
         }
       }

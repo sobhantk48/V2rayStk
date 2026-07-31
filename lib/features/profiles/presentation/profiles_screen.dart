@@ -500,7 +500,6 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
     _toast('«${best.name}» selected — ${latencyMs ?? '-'} ms');
   }
 
-
   void _toast(String message) {
     if (!mounted) {
       return;

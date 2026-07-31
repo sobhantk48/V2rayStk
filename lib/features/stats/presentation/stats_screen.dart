@@ -91,9 +91,9 @@ class StatsScreen extends ConsumerWidget {
           child: Text('خطا در خواندن آمار: $error'),
         ),
         data: (List<ProxyTraffic> items) {
-          final List<ProxyTraffic> sorted = <ProxyTraffic>[...items]
-            ..sort((ProxyTraffic a, ProxyTraffic b) =>
-                b.totalBytes.compareTo(a.totalBytes));
+          final List<ProxyTraffic> sorted = <ProxyTraffic>[...items]..sort(
+              (ProxyTraffic a, ProxyTraffic b) =>
+                  b.totalBytes.compareTo(a.totalBytes));
 
           final int totalUp = sorted.fold<int>(
             0,

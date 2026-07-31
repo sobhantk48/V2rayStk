@@ -60,8 +60,7 @@ class VpnStatusColors extends ThemeExtension<VpnStatusColors> {
 
   /// دسترسی امن از هر جای UI؛ اگر extension ثبت نشده باشد fallback می‌دهد.
   static VpnStatusColors of(BuildContext context) {
-    final VpnStatusColors? ext =
-        Theme.of(context).extension<VpnStatusColors>();
+    final VpnStatusColors? ext = Theme.of(context).extension<VpnStatusColors>();
     if (ext != null) {
       return ext;
     }

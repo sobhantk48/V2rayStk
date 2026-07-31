@@ -134,8 +134,9 @@ class V2rayOutboundConverter {
   ) {
     final Map<String, dynamic> vnext =
         _firstOfOrEmpty(settings['vnext']) ?? node;
-    final Map<String, dynamic> user =
-        _firstOfOrEmpty(vnext['users']) ?? _firstOfOrEmpty(node['users']) ?? node;
+    final Map<String, dynamic> user = _firstOfOrEmpty(vnext['users']) ??
+        _firstOfOrEmpty(node['users']) ??
+        node;
 
     final Map<String, dynamic> outbound = <String, dynamic>{
       'type': 'vmess',
@@ -152,8 +153,8 @@ class V2rayOutboundConverter {
         _pick(user, <String>['id', 'uuid']),
         'VMess uuid',
       ),
-      'security': (_pick(user, <String>['security', 'cipher']) ?? 'auto')
-          .toString(),
+      'security':
+          (_pick(user, <String>['security', 'cipher']) ?? 'auto').toString(),
     };
 
     final int alterId =
@@ -183,8 +184,9 @@ class V2rayOutboundConverter {
   ) {
     final Map<String, dynamic> vnext =
         _firstOfOrEmpty(settings['vnext']) ?? node;
-    final Map<String, dynamic> user =
-        _firstOfOrEmpty(vnext['users']) ?? _firstOfOrEmpty(node['users']) ?? node;
+    final Map<String, dynamic> user = _firstOfOrEmpty(vnext['users']) ??
+        _firstOfOrEmpty(node['users']) ??
+        node;
 
     final Map<String, dynamic> outbound = <String, dynamic>{
       'type': 'vless',
@@ -253,13 +255,14 @@ class V2rayOutboundConverter {
     _applyStream(outbound, stream);
 
     // Trojan بدون TLS معنا ندارد.
-    outbound['tls'] ??=
-        _nativeTls(node, forceEnabled: true) ?? <String, dynamic>{
+    outbound['tls'] ??= _nativeTls(node, forceEnabled: true) ??
+        <String, dynamic>{
           'enabled': true,
           if ((_pick(node, <String>['sni', 'server_name']) ?? '')
               .toString()
               .isNotEmpty)
-            'server_name': _pick(node, <String>['sni', 'server_name']).toString(),
+            'server_name':
+                _pick(node, <String>['sni', 'server_name']).toString(),
         };
     if (!outbound.containsKey('transport') && node['transport'] is Map) {
       outbound['transport'] = _asMap(node['transport']);
@@ -413,7 +416,8 @@ class V2rayOutboundConverter {
       outbound['password'] = password;
     }
 
-    final int up = _toInt(_pick(node, <String>['up_mbps', 'upMbps', 'up'])) ?? 0;
+    final int up =
+        _toInt(_pick(node, <String>['up_mbps', 'upMbps', 'up'])) ?? 0;
     final int down =
         _toInt(_pick(node, <String>['down_mbps', 'downMbps', 'down'])) ?? 0;
     if (up > 0) {
@@ -441,9 +445,8 @@ class V2rayOutboundConverter {
       outbound['server_ports'] = _stringList(hopPorts);
     }
 
-    final int hopInterval = _toInt(
-            _pick(node, <String>['hop_interval', 'hopInterval'])) ??
-        0;
+    final int hopInterval =
+        _toInt(_pick(node, <String>['hop_interval', 'hopInterval'])) ?? 0;
     if (hopInterval > 0) {
       outbound['hop_interval'] = '${hopInterval}s';
     }
@@ -475,7 +478,8 @@ class V2rayOutboundConverter {
       ),
       // hysteria v1 در sing-box بدون پهنای باند کار نمی‌کند؛ مقادیر
       // پیش‌فرض محافظه‌کارانه می‌گذاریم.
-      'up_mbps': _toInt(_pick(node, <String>['up_mbps', 'upMbps', 'up'])) ?? 100,
+      'up_mbps':
+          _toInt(_pick(node, <String>['up_mbps', 'upMbps', 'up'])) ?? 100,
       'down_mbps':
           _toInt(_pick(node, <String>['down_mbps', 'downMbps', 'down'])) ?? 100,
     };
@@ -604,7 +608,8 @@ class V2rayOutboundConverter {
       'type': 'wireguard',
       'tag': tag,
       'server': _requireString(
-        _pick(peer ?? source, <String>['server', 'address', 'endpoint', 'host']),
+        _pick(
+            peer ?? source, <String>['server', 'address', 'endpoint', 'host']),
         'WireGuard endpoint',
       ),
       'server_port': _requirePort(
@@ -716,7 +721,8 @@ class V2rayOutboundConverter {
     };
 
     final int minIdle =
-        _toInt(_pick(node, <String>['min_idle_session', 'minIdleSession'])) ?? 0;
+        _toInt(_pick(node, <String>['min_idle_session', 'minIdleSession'])) ??
+            0;
     if (minIdle > 0) {
       outbound['min_idle_session'] = minIdle;
     }
@@ -1018,9 +1024,8 @@ class V2rayOutboundConverter {
         .toString()
         .trim();
 
-    final Map<String, dynamic> reality = raw['reality'] is Map
-        ? _asMap(raw['reality'])
-        : <String, dynamic>{};
+    final Map<String, dynamic> reality =
+        raw['reality'] is Map ? _asMap(raw['reality']) : <String, dynamic>{};
     final String publicKey = (reality['public_key'] ??
             reality['publicKey'] ??
             _pick(node, <String>['pbk', 'public_key']) ??
@@ -1102,11 +1107,10 @@ class V2rayOutboundConverter {
       };
     }
 
-    final String password = (raw ??
-            _pick(node, <String>['obfs_password', 'obfsPassword']) ??
-            '')
-        .toString()
-        .trim();
+    final String password =
+        (raw ?? _pick(node, <String>['obfs_password', 'obfsPassword']) ?? '')
+            .toString()
+            .trim();
     if (password.isEmpty) {
       return null;
     }
