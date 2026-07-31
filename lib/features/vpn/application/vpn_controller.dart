@@ -1,11 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform/vpn_platform_service.dart';
+import '../../admin/domain/admin_settings.dart';
 import '../../profiles/application/profile_providers.dart';
 import '../../profiles/domain/profile.dart';
+import '../../sing_box/application/admin_config_patcher.dart';
 import '../../sing_box/application/sing_box_config_generator.dart';
 import '../../sing_box/domain/sing_box_config.dart';
 import '../../sing_box/domain/sing_box_config_exception.dart';
+import 'admin_settings_reader.dart';
 
 enum VpnConnectionState {
   disconnected,
@@ -20,6 +25,12 @@ final Provider<VpnPlatformService> vpnPlatformServiceProvider =
 final Provider<SingBoxConfigGenerator> singBoxConfigGeneratorProvider =
     Provider<SingBoxConfigGenerator>((ref) => const SingBoxConfigGenerator());
 
+final Provider<AdminConfigPatcher> adminConfigPatcherProvider =
+    Provider<AdminConfigPatcher>((ref) => const AdminConfigPatcher());
+
+final Provider<AdminSettingsReader> adminSettingsReaderProvider =
+    Provider<AdminSettingsReader>((ref) => const AdminSettingsReader());
+
 final NotifierProvider<VpnController, VpnConnectionState>
     vpnControllerProvider = NotifierProvider<VpnController, VpnConnectionState>(
   VpnController.new,
@@ -31,6 +42,10 @@ class VpnController extends Notifier<VpnConnectionState> {
   SingBoxConfigGenerator get _generator =>
       ref.read(singBoxConfigGeneratorProvider);
 
+  AdminConfigPatcher get _patcher => ref.read(adminConfigPatcherProvider);
+
+  AdminSettingsReader get _reader => ref.read(adminSettingsReaderProvider);
+
   @override
   VpnConnectionState build() {
     return VpnConnectionState.disconnected;
@@ -39,8 +54,8 @@ class VpnController extends Notifier<VpnConnectionState> {
   Future<void> connect() async {
     state = VpnConnectionState.connecting;
     try {
-      final String config = await _buildActiveConfigJson();
-      await _service.connect(config);
+      final Profile profile = await _resolveActiveProfile();
+      await _service.connect(await _buildConfigJson(profile));
       state = VpnConnectionState.connected;
     } catch (_) {
       state = VpnConnectionState.disconnected;
@@ -59,33 +74,52 @@ class VpnController extends Notifier<VpnConnectionState> {
     }
   }
 
-  /// پروفایل فعال را پیدا می‌کند و آن را به JSON هسته تبدیل می‌کند.
-  /// اگر هیچ پروفایلی فعال نباشد، اولین پروفایل موجود استفاده می‌شود.
-  Future<String> _buildActiveConfigJson() async {
+  /// اتصال با یک پروفایل مشخص، بدون توجه به فلگ isActive.
+  Future<void> connectWithProfile(Profile profile) async {
+    state = VpnConnectionState.connecting;
+    try {
+      await _service.connect(await _buildConfigJson(profile));
+      state = VpnConnectionState.connected;
+    } catch (_) {
+      state = VpnConnectionState.disconnected;
+      rethrow;
+    }
+  }
+
+  /// پروفایل فعال، یا در نبود آن اولین پروفایل موجود.
+  Future<Profile> _resolveActiveProfile() async {
     final List<Profile> profiles = await ref.read(profilesProvider.future);
 
     if (profiles.isEmpty) {
       throw const SingBoxConfigException('No profile available to connect.');
     }
 
-    final Profile profile = profiles.firstWhere(
+    return profiles.firstWhere(
       (Profile item) => item.isActive,
       orElse: () => profiles.first,
     );
-
-    final SingBoxConfig config = _generator.generate(profile);
-    return config.toJsonString();
   }
 
-  /// اتصال با یک پروفایل مشخص، بدون توجه به فلگ isActive.
-  Future<void> connectWithProfile(Profile profile) async {
-    state = VpnConnectionState.connecting;
+  /// کانفیگ پروفایل را می‌سازد و تنظیمات پنل ادمین را روی آن اعمال می‌کند.
+  Future<String> _buildConfigJson(Profile profile) async {
+    final SingBoxConfig config = _generator.generate(profile);
+    final String rawJson = config.toJsonString();
+
     try {
-      await _service.connect(_generator.generate(profile).toJsonString());
-      state = VpnConnectionState.connected;
+      final AdminSettings settings = await _reader.read();
+      final dynamic decoded = jsonDecode(rawJson);
+      if (decoded is! Map) {
+        return rawJson;
+      }
+      final Map<String, dynamic> patched = _patcher.apply(
+        Map<String, dynamic>.from(decoded),
+        settings,
+      );
+      return jsonEncode(patched);
     } catch (_) {
-      state = VpnConnectionState.disconnected;
-      rethrow;
+      // اگر اعمال تنظیمات به هر دلیلی شکست خورد، اتصال با کانفیگ خام
+      // ادامه پیدا می‌کند تا کاربر بی‌اینترنت نماند.
+      return rawJson;
     }
   }
 }

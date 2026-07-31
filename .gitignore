@@ -74,3 +74,6 @@ coverage/
 
 # libbox (در CI ساخته می‌شود)
 android/app/libs/*.aar
+
+# اسکریپت‌های موقتی پچ
+patch_*.py
