@@ -104,18 +104,33 @@ class GroupsNotifier extends AsyncNotifier<List<ProxyGroup>> {
         await ref.read(profileRepositoryProvider.future);
     final List<Profile> all = await profiles.getProfiles();
 
-    final List<Profile> orphans = all
-        .where((Profile profile) => profile.groupId == groupId)
-        .map((Profile profile) => profile.copyWith(clearGroup: true))
-        .toList();
-
-    await profiles.updateProfiles(orphans);
+    for (final Profile profile in all) {
+      if (profile.groupId == groupId) {
+        await profiles.updateProfile(profile.copyWith(clearGroup: true));
+      }
+    }
 
     await _refresh();
+    ref.invalidate(profilesProvider);
+  }
 
-    if (orphans.isNotEmpty) {
-      ref.invalidate(profilesProvider);
+  /// همهٔ گروه‌ها حذف می‌شوند؛ پروفایل‌ها باقی می‌مانند و «بدون گروه» می‌شوند.
+  Future<void> deleteAll() async {
+    final GroupRepository repository = await _repository;
+    await repository.deleteAll();
+
+    final ProfileRepository profiles =
+        await ref.read(profileRepositoryProvider.future);
+    final List<Profile> all = await profiles.getProfiles();
+
+    for (final Profile profile in all) {
+      if (profile.groupId != null) {
+        await profiles.updateProfile(profile.copyWith(clearGroup: true));
+      }
     }
+
+    await _refresh();
+    ref.invalidate(profilesProvider);
   }
 
   Future<void> reorder(List<String> orderedIds) async {
@@ -151,22 +166,17 @@ class ProfileGroupAssigner {
         await _ref.read(profileRepositoryProvider.future);
     final List<Profile> all = await profiles.getProfiles();
 
-    final Set<String> targets = profileIds.toSet();
+    for (final Profile profile in all) {
+      if (!profileIds.contains(profile.id)) {
+        continue;
+      }
 
-    final List<Profile> patched = all
-        .where((Profile profile) => targets.contains(profile.id))
-        .map(
-          (Profile profile) => groupId == null
-              ? profile.copyWith(clearGroup: true)
-              : profile.copyWith(groupId: groupId),
-        )
-        .toList();
-
-    if (patched.isEmpty) {
-      return;
+      await profiles.updateProfile(
+        groupId == null
+            ? profile.copyWith(clearGroup: true)
+            : profile.copyWith(groupId: groupId),
+      );
     }
-
-    await profiles.updateProfiles(patched);
 
     _ref.invalidate(profilesProvider);
   }
