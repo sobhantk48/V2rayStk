@@ -1,347 +1,302 @@
 import 'dart:convert';
-import 'package:riverpod/riverpod.dart';
+
+import '../../profiles/domain/profile.dart';
+import '../../profiles/domain/profile_type.dart';
 import '../domain/sing_box_config.dart';
 import '../domain/sing_box_config_exception.dart';
-import '../../admin/domain/admin_settings.dart';
-
-// ==================== CONFIG GENERATOR ====================
+import 'v2ray_outbound_converter.dart';
 
 class SingBoxConfigGenerator {
-  final AdminSettings? adminSettings;
+  final V2rayOutboundConverter _v2rayConverter = const V2rayOutboundConverter();
 
-  const SingBoxConfigGenerator({this.adminSettings});
+  const SingBoxConfigGenerator();
 
-  String generate(SingBoxConfig config) {
-    final routeRules = <Map<String, dynamic>>[
-      {'protocol': 'dns', 'outbound': 'dns-out'},
-      {'ip_is_private': true, 'outbound': 'direct'},
-    ];
+  SingBoxConfig generate(Profile profile) {
+    try {
+      final Map<String, dynamic>? json =
+          _tryDecodeJsonObject(profile.rawConfig);
 
-    // حذف قاعده مسدودسازی UDP/443 (دقیقاً همان چیزی که باعث می‌شه یوتیوب و QUIC کار نکنه)
-    // final route = { 'rules': routeRules, 'final': 'proxy', 'auto_detect_interface': true };
+      if (json != null) {
+        if (_looksLikeSingBoxConfig(json)) {
+          return SingBoxConfig(_wrap(_adoptSingBoxConfig(json)));
+        }
+        return SingBoxConfig(
+          _wrap(_v2rayConverter.convert(json, tag: 'proxy')),
+        );
+      }
 
-    final route = {
-      'rules': routeRules,
-      'final': 'proxy',
-      'auto_detect_interface': true
-    };
-
-    final dns = _buildDns(config);
-    final outbounds = [
-      _buildProxyOutbound(config),
-      const {'type': 'direct', 'tag': 'direct'},
-      const {'type': 'block', 'tag': 'block'},
-      {'type': 'dns', 'tag': 'dns-out'},
-    ];
-
-    final configJson = {
-      'log': {'level': 'info', 'output': 'none'},
-      'inbounds': _buildInbounds(config),
-      'outbounds': outbounds,
-      'route': route,
-      'dns': dns,
-      'experimental': {'cache_file': {'enabled': true, 'store_fakeip': true}},
-    };
-
-    return jsonEncode(configJson);
+      // اگر لینک URI بود (مثل vless://)
+      return SingBoxConfig(_wrap(_buildOutboundFromUri(profile)));
+    } catch (e) {
+      throw SingBoxConfigException('خطا در تولید کانفیگ: $e');
+    }
   }
 
-  Map<String, dynamic> _buildDns(SingBoxConfig config) {
-    final servers = <Map<String, dynamic>>[
-      {
-        'tag': 'proxy-dns',
-        'address': 'tls://8.8.8.8',
-        'detour': 'proxy',
-        'address_resolver': 'local-dns',
-        'address_strategy': 'prefer_ipv4'
-      },
-      {
-        'tag': 'local-dns',
-        'address': '223.5.5.5',
-        'detour': 'direct'
-      },
-      {
-        'tag': 'block-dns',
-        'address': 'rcode://success'
-      },
-    ];
+  Map<String, dynamic> _buildOutboundFromUri(Profile profile) {
+    final uri = Uri.parse(profile.rawConfig);
+    final params = uri.queryParameters;
+    const tag = 'proxy';
 
-    final rules = <Map<String, dynamic>>[
-      {'outbound': 'any', 'server': 'local-dns'},
-    ];
+    switch (profile.type) {
+      case ProfileType.vless:
+      case ProfileType.reality:
+        return _buildVlessOutbound(uri, params, tag);
+      case ProfileType.trojan:
+        return _buildTrojanOutbound(uri, params, tag);
+      case ProfileType.shadowsocks:
+        return _buildShadowsocksOutbound(uri, params, tag);
+      default:
+        throw SingBoxConfigException(
+            'پروتکل ${profile.type} هنوز به صورت کامل پشتیبانی نمی‌شود.');
+    }
+  }
 
-    if (adminSettings?.dnsMode == 'doh' && config.dohUrl != null) {
-      servers.add({
-        'tag': 'doh-dns',
-        'address': config.dohUrl!,
-        'detour': 'proxy',
-        'address_resolver': 'local-dns'
-      });
-      rules.add({'outbound': 'any', 'server': 'doh-dns'});
+  Map<String, dynamic> _buildVlessOutbound(
+      Uri uri, Map<String, String> params, String tag) {
+    final String uuid = uri.userInfo;
+    final String security = (params['security'] ?? '').toLowerCase();
+    final String pbk = params['pbk'] ?? '';
+    final String sni = params['sni'] ?? params['host'] ?? '';
+    final String sid = params['sid'] ?? '';
+    final String fp = params['fp'] ?? 'chrome';
+    final String flow = params['flow'] ?? '';
+
+    final Map<String, dynamic> outbound = {
+      'type': 'vless',
+      'tag': tag,
+      'server': uri.host,
+      'server_port': uri.port,
+      'uuid': uuid};
+
+    // flow فقط وقتی اضافه شود که واقعا مقدار دارد (خالی باعث خطا می‌شود)
+    if (flow.isNotEmpty) {
+      outbound['flow'] = flow;
     }
 
-    return {
-      'servers': servers,
-      'rules': rules,
-      'final': 'proxy-dns',
-      'strategy': 'prefer_ipv4',
-      'disable_cache': false,
-    };
+    if (security == 'reality' || pbk.isNotEmpty) {
+      if (pbk.isEmpty) {
+        throw const SingBoxConfigException(
+            'Public Key (pbk) برای Reality الزامی است');
+      }
+      outbound['tls'] = {
+        'enabled': true,
+        'server_name': sni,
+        'utls': {
+          'enabled': true,
+          'fingerprint': fp},
+        'reality': {
+          'enabled': true,
+          'public_key': pbk,
+          'short_id': sid}
+      };
+    } else if (security == 'tls') {
+      outbound['tls'] = {
+        'enabled': true,
+        'server_name': sni,
+        'utls': {
+          'enabled': true,
+          'fingerprint': fp}};
+    }
+
+    _addTransport(outbound, params);
+    return outbound;
   }
 
-  Map<String, dynamic> _buildProxyOutbound(SingBoxConfig config) {
-    final type = config.protocol.toLowerCase();
+  void _addTransport(Map<String, dynamic> outbound, Map<String, String> params) {
+    final String type = (params['type'] ?? '').toLowerCase();
+    if (type.isEmpty || type == 'tcp' || type == 'raw' || type == 'none') {
+      return; // ترنسپورت خام؛ چیزی اضافه نمی‌شود
+    }
 
-    final base = <String, dynamic>{
-      'type': type,
-      'tag': 'proxy',
-      'server': config.server,
-      'server_port': config.port,
-    };
+    final String decoded = _decodeOnce(params['path'] ?? '/');
+    String cleanPath = decoded;
+    int maxEarlyData = int.tryParse(params['ed'] ?? '') ?? 0;
+    final int qm = decoded.indexOf('?');
+    if (qm >= 0) {
+      cleanPath = decoded.substring(0, qm);
+      final q = Uri.splitQueryString(decoded.substring(qm + 1));
+      maxEarlyData = int.tryParse(q['ed'] ?? '') ?? maxEarlyData;
+    }
+    if (cleanPath.isEmpty) cleanPath = '/';
+    if (!cleanPath.startsWith('/')) cleanPath = '/\$cleanPath';
+
+    final String host = _transportHost(outbound, params);
 
     switch (type) {
-      case 'vless':
-        return _buildVlessOutbound(base, config);
-      case 'vmess':
-        return _buildVmessOutbound(base, config);
-      case 'trojan':
-        return _buildTrojanOutbound(base, config);
-      case 'shadowsocks':
-        return _buildShadowsocksOutbound(base, config);
-      case 'hysteria2':
-        return _buildHysteria2Outbound(base, config);
-      case 'tuic':
-        return _buildTuicOutbound(base, config);
-      case 'wireguard':
-        return _buildWireguardOutbound(base, config);
-      case 'shadowtls':
-        return _buildShadowtlsOutbound(base, config);
-      case 'anytls':
-        return _buildAnytlsOutbound(base, config);
-      case 'naiveproxy':
-        return _buildNaiveOutbound(base, config);
-      case 'socks':
-        return _buildSocksOutbound(base, config);
+      case 'ws':
+      case 'websocket':
+        final Map<String, dynamic> ws = {'type': 'ws', 'path': cleanPath};
+        if (host.isNotEmpty) ws['headers'] = {'Host': host};
+        if (maxEarlyData > 0) {
+          ws['max_early_data'] = maxEarlyData;
+          ws['early_data_header_name'] = 'Sec-WebSocket-Protocol';
+        }
+        outbound['transport'] = ws;
+        break;
+
+      case 'httpupgrade':
+        final Map<String, dynamic> hu = {
+          'type': 'httpupgrade',
+          'path': cleanPath,
+        };
+        if (host.isNotEmpty) hu['host'] = host;
+        outbound['transport'] = hu;
+        break;
+
+      case 'grpc':
+        outbound['transport'] = {
+          'type': 'grpc',
+          'service_name': params['serviceName'] ?? params['servicename'] ?? '',
+        };
+        break;
+
       case 'http':
-        return _buildHttpOutbound(base, config);
-      case 'hysteria':
-        return _buildHysteriaOutbound(base, config);
-      case 'reality':
-        return _buildRealityOutbound(base, config);
-      case 'tor':
-        return _buildTorOutbound(base, config);
-      case 'ssh':
-        return _buildSshOutbound(base, config);
+      case 'h2':
+        final Map<String, dynamic> h = {'type': 'http', 'path': cleanPath};
+        if (host.isNotEmpty) h['host'] = [host];
+        final String method = params['method'] ?? '';
+        if (method.isNotEmpty) h['method'] = method;
+        outbound['transport'] = h;
+        break;
+
+      case 'quic':
+        outbound['transport'] = {'type': 'quic'};
+        break;
+
       default:
-        throw SingBoxConfigException('protocol_not_supported', 'پروتکل $type پشتیبانی نمی‌شود');
+        throw const SingBoxConfigException('ترنسپورت پشتیبانی‌نشده: \$type');
     }
   }
 
-  Map<String, dynamic> _buildVlessOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out.addAll({
-      'uuid': config.uuid!,
-      'flow': config.flow ?? 'xtls-rprx-vision',
-    });
-    if (config.sni != null) out['server_name'] = config.sni;
-    if (config.alpn != null) out['alpn'] = config.alpn.split(',');
-    if (config.headerType == 'http') {
-      out['transport'] = {'type': 'http', 'host': config.httpHost};
-    } else if (config.headerType == 'ws') {
-      out['transport'] = {
-        'type': 'ws',
-        'path': config.wsPath ?? '/',
-        'headers': {'Host': config.wsHost ?? config.server}
-      };
+  /// یک مرحله percent-decode با محافظت از ورودی نامعتبر
+  String _decodeOnce(String value) {
+    try {
+      return Uri.decodeComponent(value);
+    } catch (_) {
+      return value;
     }
-    if (config.security == 'reality') {
-      out['reality'] = {
-        'public_key': config.realityPublicKey!,
-        'short_id': config.realityShortId ?? '',
-        'server_name': config.sni ?? config.server
-      };
+  }
+
+  /// انتخاب Host برای ترنسپورت: host → sni → server_name → آدرس سرور
+  String _transportHost(
+      Map<String, dynamic> outbound, Map<String, String> params) {
+    final String host = (params['host'] ?? '').trim();
+    if (host.isNotEmpty) return host;
+    final String sni = (params['sni'] ?? '').trim();
+    if (sni.isNotEmpty) return sni;
+    final tls = outbound['tls'];
+    if (tls is Map && tls['server_name'] is String) {
+      final String sn = (tls['server_name'] as String).trim();
+      if (sn.isNotEmpty) return sn;
     }
-    return out;
+    final server = outbound['server'];
+    return server is String ? server : '';
   }
 
-  Map<String, dynamic> _buildVmessOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out.addAll({
-      'uuid': config.uuid!,
-      'security': config.security ?? 'auto',
-      'alter_id': config.alterId ?? 0,
-    });
-    if (config.sni != null) out['server_name'] = config.sni;
-    if (config.alpn != null) out['alpn'] = config.alpn.split(',');
-    if (config.headerType == 'http') {
-      out['transport'] = {'type': 'http', 'host': config.httpHost};
-    } else if (config.headerType == 'ws') {
-      out['transport'] = {
-        'type': 'ws',
-        'path': config.wsPath ?? '/',
-        'headers': {'Host': config.wsHost ?? config.server}
-      };
-    }
-    return out;
-  }
-
-  Map<String, dynamic> _buildTrojanOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['password'] = config.password!;
-    if (config.sni != null) out['server_name'] = config.sni;
-    if (config.alpn != null) out['alpn'] = config.alpn.split(',');
-    if (config.headerType == 'ws') {
-      out['transport'] = {
-        'type': 'ws',
-        'path': config.wsPath ?? '/',
-        'headers': {'Host': config.wsHost ?? config.server}
-      };
-    }
-    return out;
-  }
-
-  Map<String, dynamic> _buildShadowsocksOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['method'] = config.method!;
-    out['password'] = config.password!;
-    out['plugin'] = config.plugin ?? '';
-    out['plugin_opts'] = config.pluginOpts ?? '';
-    return out;
-  }
-
-  Map<String, dynamic> _buildHysteria2Outbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['password'] = config.password;
-    out['obfs'] = config.obfs ?? '';
-    if (config.obfsPassword != null) out['obfs_password'] = config.obfsPassword;
-    return out;
-  }
-
-  Map<String, dynamic> _buildTuicOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['uuid'] = config.uuid!;
-    out['password'] = config.password!;
-    out['congestion_control'] = config.congestionControl ?? 'bbr';
-    return out;
-  }
-
-  Map<String, dynamic> _buildWireguardOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['private_key'] = config.privateKey!;
-    out['peer_public_key'] = config.peerPublicKey!;
-    out['pre_shared_key'] = config.preSharedKey ?? '';
-    out['addresses'] = config.addresses ?? ['10.0.0.2/32'];
-    return out;
-  }
-
-  Map<String, dynamic> _buildShadowtlsOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['password'] = config.password!;
-    out['handshake'] = {'type': 'none'};
-    return out;
-  }
-
-  Map<String, dynamic> _buildAnytlsOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['password'] = config.password!;
-    return out;
-  }
-
-  Map<String, dynamic> _buildNaiveOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['password'] = config.password!;
-    return out;
-  }
-
-  Map<String, dynamic> _buildSocksOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['username'] = config.username;
-    out['password'] = config.password;
-    return out;
-  }
-
-  Map<String, dynamic> _buildHttpOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['username'] = config.username;
-    out['password'] = config.password;
-    return out;
-  }
-
-  Map<String, dynamic> _buildHysteriaOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['password'] = config.password!;
-    return out;
-  }
-
-  Map<String, dynamic> _buildRealityOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['public_key'] = config.realityPublicKey!;
-    out['short_id'] = config.realityShortId ?? '';
-    return out;
-  }
-
-  Map<String, dynamic> _buildTorOutbound(Map<String, dynamic> base, SingBoxConfig config) {
+  Map<String, dynamic> _buildTrojanOutbound(
+      Uri uri, Map<String, String> params, String tag) {
     return {
-      'type': 'socks',
-      'tag': 'proxy',
-      'server': '127.0.0.1',
-      'server_port': 9050,
-      'version': '5',
-      'tls': {'enabled': true}
+      'type': 'trojan',
+      'tag': tag,
+      'server': uri.host,
+      'server_port': uri.port,
+      'password': uri.userInfo,
+      'tls': {
+        'enabled': true,
+        'server_name': params['sni'] ?? params['host'] ?? '',
+        'utls': {
+          'enabled': true,
+          'fingerprint': params['fp'] ?? 'chrome'}}
     };
   }
 
-  Map<String, dynamic> _buildSshOutbound(Map<String, dynamic> base, SingBoxConfig config) {
-    final out = Map<String, dynamic>.from(base);
-    out['username'] = config.username;
-    out['password'] = config.password;
-    return out;
+  Map<String, dynamic> _buildShadowsocksOutbound(
+      Uri uri, Map<String, String> params, String tag) {
+    return {
+      'type': 'shadowsocks',
+      'tag': tag,
+      'server': uri.host,
+      'server_port': uri.port,
+      'method': 'aes-256-gcm',
+      'password': uri.userInfo};
   }
 
-  List<Map<String, dynamic>> _buildInbounds(SingBoxConfig config) {
-    final list = <Map<String, dynamic>>[];
+  Map<String, dynamic> _wrap(Map<String, dynamic> outbound) {
+    return {
+      'log': {'level': 'info', 'timestamp': true},
+      'experimental': {
+        'clash_api': {
+          'external_controller': '127.0.0.1:9090',
+          'access_control_allow_origin': '*'},
+        'cache_file': {
+          'enabled': true,
+          'store_fakeip': true}
+      },
+      'dns': {
+        'servers': [
+          {'tag': 'proxy-dns', 'address': 'tls://8.8.8.8', 'detour': 'proxy', 'address_resolver': 'local-dns', 'address_strategy': 'prefer_ipv4'},
+          {'tag': 'local-dns', 'address': '223.5.5.5', 'detour': 'direct'},
+          {'tag': 'block-dns', 'address': 'rcode://success'},
+        ],
+        'rules': [
+          // آدرس خود سرورها همیشه از مسیر مستقیم حل شود (جلوگیری از لوپ)
+          {'outbound': 'any', 'server': 'local-dns'},
+        ],
+        'final': 'proxy-dns',
+        'strategy': 'prefer_ipv4',
+        'disable_cache': false},
+      'inbounds': [
+        {
+          'type': 'tun',
+          'tag': 'tun-in',
+          'interface_name': 'tun0',
+          'inet4_address': '172.19.0.1/28',
+          'mtu': 1500,
+          'auto_route': true,
+          'strict_route': true,
+          'endpoint_independent_nat': true,
+          'stack': 'system',
+          'sniff': true,
+          'sniff_override_destination': true,
+          'domain_strategy': 'prefer_ipv4'}
+      ],
+      'outbounds': [
+        outbound,
+        {'type': 'direct', 'tag': 'direct'},
+        {'type': 'block', 'tag': 'block'},
+        {'type': 'dns', 'tag': 'dns-out'}
+      ],
+      'route': {
+        'rules': [
+          {'protocol': 'dns', 'outbound': 'dns-out'},
+          {
+            'network': 'udp',
+            'port': [443],
+            'outbound': 'block'
+          },
+          {'ip_is_private': true, 'outbound': 'direct'},
+        ],
+        'final': 'proxy',
+        'auto_detect_interface': true}
+    };
+  }
 
-    if (config.enableTun) {
-      list.add({
-        'type': 'tun',
-        'tag': 'tun-in',
-        'address': ['172.19.0.1/30'],
-        'stack': config.tunStack ?? 'system',
-        'sniff': true,
-        'sniff_override_destination': true,
-        'auto_route': true,
-        'strict_route': true,
-        'endpoint_independent_nat': true,
-        'include_uid': config.includeUid ?? [],
-        'exclude_uid': config.excludeUid ?? [],
-      });
+  Map<String, dynamic>? _tryDecodeJsonObject(String raw) {
+    try {
+      final decoded = json.decode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return null;
+  }
+
+  bool _looksLikeSingBoxConfig(Map<String, dynamic> json) =>
+      json.containsKey('outbounds') || json.containsKey('inbounds');
+
+  Map<String, dynamic> _adoptSingBoxConfig(Map<String, dynamic> json) {
+    if (json.containsKey('outbounds') &&
+        (json['outbounds'] as List).isNotEmpty) {
+      return json['outbounds'][0];
     }
-
-    list.add({
-      'type': 'mixed',
-      'tag': 'mixed-in',
-      'listen': '127.0.0.1',
-      'listen_port': 1080,
-      'sniff': true,
-      'sniff_override_destination': true,
-    });
-
-    if (config.enableSocks) {
-      list.add({
-        'type': 'socks',
-        'tag': 'socks-in',
-        'listen': '127.0.0.1',
-        'listen_port': 1081,
-        'sniff': true,
-      });
-    }
-
-    return list;
+    return json;
   }
 }
-
-final singBoxConfigGeneratorProvider = Provider<SingBoxConfigGenerator>(
-  (ref) => SingBoxConfigGenerator(
-    adminSettings: ref.read(adminSettingsReaderProvider),
-  ),
-);
