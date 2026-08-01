@@ -227,38 +227,49 @@ class SingBoxConfigGenerator {
       'experimental': {
         'clash_api': {
           'external_controller': '127.0.0.1:9090',
-          'access_control_allow_origin': '*'},
-        'cache_file': {
-          'enabled': true,
-          'store_fakeip': true}
+          'access_control_allow_origin': '*',
+        },
+        'cache_file': {'enabled': true},
       },
       'dns': {
         'servers': [
-          {'tag': 'proxy-dns', 'address': 'tls://8.8.8.8', 'detour': 'proxy', 'address_resolver': 'local-dns', 'address_strategy': 'prefer_ipv4'},
-          {'tag': 'local-dns', 'address': '223.5.5.5', 'detour': 'direct'},
+          {
+            'tag': 'proxy-dns',
+            'address': 'tls://8.8.8.8',
+            'detour': 'proxy',
+          },
+          {
+            'tag': 'local-dns',
+            'address': 'local',
+            'detour': 'direct',
+          },
           {'tag': 'block-dns', 'address': 'rcode://success'},
         ],
         'rules': [
-          // آدرس خود سرورها همیشه از مسیر مستقیم حل شود (جلوگیری از لوپ)
-          {'outbound': 'any', 'server': 'local-dns'},
+          // فقط آدرس سرورهای خروجی با DNS سیستم حل شود تا لوپ ایجاد نشود
+          {
+            'outbound': ['any'],
+            'server': 'local-dns',
+          },
         ],
         'final': 'proxy-dns',
-        'strategy': 'prefer_ipv4',
-        'disable_cache': false},
+        'strategy': 'ipv4_only',
+        'independent_cache': true,
+        'disable_cache': false,
+      },
       'inbounds': [
         {
           'type': 'tun',
           'tag': 'tun-in',
           'interface_name': 'tun0',
           'inet4_address': '172.19.0.1/28',
-          'mtu': 1500,
           'auto_route': true,
           'strict_route': true,
-          'endpoint_independent_nat': true,
-          'stack': 'system',
+          'stack': 'gvisor',
           'sniff': true,
           'sniff_override_destination': true,
-          'domain_strategy': 'prefer_ipv4'}
+          'domain_strategy': 'ipv4_only',
+        }
       ],
       'outbounds': [
         outbound,
@@ -269,15 +280,11 @@ class SingBoxConfigGenerator {
       'route': {
         'rules': [
           {'protocol': 'dns', 'outbound': 'dns-out'},
-          {
-            'network': 'udp',
-            'port': [443],
-            'outbound': 'block'
-          },
           {'ip_is_private': true, 'outbound': 'direct'},
         ],
         'final': 'proxy',
-        'auto_detect_interface': true}
+        'auto_detect_interface': true,
+      }
     };
   }
 
