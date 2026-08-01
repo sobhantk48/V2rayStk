@@ -266,6 +266,7 @@ class SingBoxConfigGenerator {
           'auto_route': true,
           'strict_route': true,
           'stack': 'gvisor',
+          'endpoint_independent_nat': true,
           'sniff': true,
           'sniff_override_destination': true,
           'domain_strategy': 'ipv4_only',
