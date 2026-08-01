@@ -235,7 +235,7 @@ class SingBoxConfigGenerator {
         'servers': [
           {
             'tag': 'proxy-dns',
-            'address': 'tls://8.8.8.8',
+            'address': 'tcp://1.1.1.1',
             'detour': 'proxy',
           },
           {
@@ -281,6 +281,7 @@ class SingBoxConfigGenerator {
       'route': {
         'rules': [
           {'protocol': 'dns', 'outbound': 'dns-out'},
+          {'port': [53], 'outbound': 'dns-out'},
           {'ip_is_private': true, 'outbound': 'direct'},
         ],
         'final': 'proxy',
