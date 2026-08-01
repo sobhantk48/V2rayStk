@@ -1,8 +1,3 @@
-// === sing_box_config_generator.dart ===
-// فایل اصلی که در مسیر زیر قرار دارد:
-// lib/features/sing_box/application/sing_box_config_generator.dart
-// (این کد کامل و جایگزین‌شده است. فقط همین فایل را در ویرایشگر خودت باز کن و جایگزین کن)
-
 import 'dart:convert';
 import 'package:riverpod/riverpod.dart';
 import '../domain/sing_box_config.dart';
@@ -11,36 +6,27 @@ import '../../admin/domain/admin_settings.dart';
 
 // ==================== CONFIG GENERATOR ====================
 
-/// سازنده کانفیگ Sing-box با پشتیبانی کامل از ۱۶ پروتکل، QUIC و همه نیازهای V2rayStk
 class SingBoxConfigGenerator {
   final AdminSettings? adminSettings;
 
-  /// سازنده با تنظیمات ادمین (رمز، kill switch و ...)
   const SingBoxConfigGenerator({this.adminSettings});
 
-  /// تولید کامل کانفیگ JSON sing-box از پروفایل
   String generate(SingBoxConfig config) {
     final routeRules = <Map<String, dynamic>>[
       {'protocol': 'dns', 'outbound': 'dns-out'},
       {'ip_is_private': true, 'outbound': 'direct'},
     ];
 
-    if (adminSettings?.blockQuic == true) {
-      routeRules.add({
-        'network': 'udp',
-        'port': [443],
-        'outbound': 'block'
-      });
-    }
+    // حذف قاعده مسدودسازی UDP/443 (دقیقاً همان چیزی که باعث می‌شه یوتیوب و QUIC کار نکنه)
+    // final route = { 'rules': routeRules, 'final': 'proxy', 'auto_detect_interface': true };
 
     final route = {
       'rules': routeRules,
       'final': 'proxy',
-      'auto_detect_interface': true,
+      'auto_detect_interface': true
     };
 
     final dns = _buildDns(config);
-
     final outbounds = [
       _buildProxyOutbound(config),
       const {'type': 'direct', 'tag': 'direct'},
@@ -55,7 +41,6 @@ class SingBoxConfigGenerator {
       'route': route,
       'dns': dns,
       'experimental': {'cache_file': {'enabled': true, 'store_fakeip': true}},
-      'experimental': {'clash_api': {'enabled': true, 'secret': 'v2raystk', 'external_controller': '127.0.0.1:9090'}},
     };
 
     return jsonEncode(configJson);
@@ -117,52 +102,36 @@ class SingBoxConfigGenerator {
     switch (type) {
       case 'vless':
         return _buildVlessOutbound(base, config);
-
       case 'vmess':
         return _buildVmessOutbound(base, config);
-
       case 'trojan':
         return _buildTrojanOutbound(base, config);
-
       case 'shadowsocks':
         return _buildShadowsocksOutbound(base, config);
-
       case 'hysteria2':
         return _buildHysteria2Outbound(base, config);
-
       case 'tuic':
         return _buildTuicOutbound(base, config);
-
       case 'wireguard':
         return _buildWireguardOutbound(base, config);
-
       case 'shadowtls':
         return _buildShadowtlsOutbound(base, config);
-
       case 'anytls':
         return _buildAnytlsOutbound(base, config);
-
       case 'naiveproxy':
         return _buildNaiveOutbound(base, config);
-
       case 'socks':
         return _buildSocksOutbound(base, config);
-
       case 'http':
         return _buildHttpOutbound(base, config);
-
       case 'hysteria':
         return _buildHysteriaOutbound(base, config);
-
       case 'reality':
         return _buildRealityOutbound(base, config);
-
       case 'tor':
         return _buildTorOutbound(base, config);
-
       case 'ssh':
         return _buildSshOutbound(base, config);
-
       default:
         throw SingBoxConfigException('protocol_not_supported', 'پروتکل $type پشتیبانی نمی‌شود');
     }
@@ -174,10 +143,8 @@ class SingBoxConfigGenerator {
       'uuid': config.uuid!,
       'flow': config.flow ?? 'xtls-rprx-vision',
     });
-
     if (config.sni != null) out['server_name'] = config.sni;
     if (config.alpn != null) out['alpn'] = config.alpn.split(',');
-
     if (config.headerType == 'http') {
       out['transport'] = {'type': 'http', 'host': config.httpHost};
     } else if (config.headerType == 'ws') {
@@ -187,7 +154,6 @@ class SingBoxConfigGenerator {
         'headers': {'Host': config.wsHost ?? config.server}
       };
     }
-
     if (config.security == 'reality') {
       out['reality'] = {
         'public_key': config.realityPublicKey!,
@@ -195,7 +161,6 @@ class SingBoxConfigGenerator {
         'server_name': config.sni ?? config.server
       };
     }
-
     return out;
   }
 
@@ -206,10 +171,8 @@ class SingBoxConfigGenerator {
       'security': config.security ?? 'auto',
       'alter_id': config.alterId ?? 0,
     });
-
     if (config.sni != null) out['server_name'] = config.sni;
     if (config.alpn != null) out['alpn'] = config.alpn.split(',');
-
     if (config.headerType == 'http') {
       out['transport'] = {'type': 'http', 'host': config.httpHost};
     } else if (config.headerType == 'ws') {
@@ -219,17 +182,14 @@ class SingBoxConfigGenerator {
         'headers': {'Host': config.wsHost ?? config.server}
       };
     }
-
     return out;
   }
 
   Map<String, dynamic> _buildTrojanOutbound(Map<String, dynamic> base, SingBoxConfig config) {
     final out = Map<String, dynamic>.from(base);
     out['password'] = config.password!;
-
     if (config.sni != null) out['server_name'] = config.sni;
     if (config.alpn != null) out['alpn'] = config.alpn.split(',');
-
     if (config.headerType == 'ws') {
       out['transport'] = {
         'type': 'ws',
@@ -237,7 +197,6 @@ class SingBoxConfigGenerator {
         'headers': {'Host': config.wsHost ?? config.server}
       };
     }
-
     return out;
   }
 
@@ -379,19 +338,7 @@ class SingBoxConfigGenerator {
 
     return list;
   }
-
-  /// تست صحت کانفیگ (برای لاگ)
-  bool validate(String jsonConfig) {
-    try {
-      jsonDecode(jsonConfig);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
 }
-
-// ==================== PROVIDER ====================
 
 final singBoxConfigGeneratorProvider = Provider<SingBoxConfigGenerator>(
   (ref) => SingBoxConfigGenerator(
