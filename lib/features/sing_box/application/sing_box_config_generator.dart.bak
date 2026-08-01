@@ -66,7 +66,8 @@ class SingBoxConfigGenerator {
       'tag': tag,
       'server': uri.host,
       'server_port': uri.port,
-      'uuid': uuid};
+      'uuid': uuid,
+    };
 
     // flow فقط وقتی اضافه شود که واقعا مقدار دارد (خالی باعث خطا می‌شود)
     if (flow.isNotEmpty) {
@@ -83,11 +84,13 @@ class SingBoxConfigGenerator {
         'server_name': sni,
         'utls': {
           'enabled': true,
-          'fingerprint': fp},
+          'fingerprint': fp,
+        },
         'reality': {
           'enabled': true,
           'public_key': pbk,
-          'short_id': sid}
+          'short_id': sid,
+        }
       };
     } else if (security == 'tls') {
       outbound['tls'] = {
@@ -95,7 +98,9 @@ class SingBoxConfigGenerator {
         'server_name': sni,
         'utls': {
           'enabled': true,
-          'fingerprint': fp}};
+          'fingerprint': fp,
+        },
+      };
     }
 
     _addTransport(outbound, params);
@@ -132,7 +137,9 @@ class SingBoxConfigGenerator {
         'server_name': params['sni'] ?? params['host'] ?? '',
         'utls': {
           'enabled': true,
-          'fingerprint': params['fp'] ?? 'chrome'}}
+          'fingerprint': params['fp'] ?? 'chrome',
+        },
+      }
     };
   }
 
@@ -144,7 +151,8 @@ class SingBoxConfigGenerator {
       'server': uri.host,
       'server_port': uri.port,
       'method': 'aes-256-gcm',
-      'password': uri.userInfo};
+      'password': uri.userInfo,
+    };
   }
 
   Map<String, dynamic> _wrap(Map<String, dynamic> outbound) {
@@ -153,10 +161,12 @@ class SingBoxConfigGenerator {
       'experimental': {
         'clash_api': {
           'external_controller': '127.0.0.1:9090',
-          'access_control_allow_origin': '*'},
+          'access_control_allow_origin': '*',
+        },
         'cache_file': {
           'enabled': true,
-          'store_fakeip': true}
+          'store_fakeip': true,
+        }
       },
       'dns': {
         'servers': [
@@ -170,7 +180,8 @@ class SingBoxConfigGenerator {
         ],
         'final': 'proxy-dns',
         'strategy': 'prefer_ipv4',
-        'disable_cache': false},
+        'disable_cache': false,
+      },
       'inbounds': [
         {
           'type': 'tun',
@@ -184,7 +195,8 @@ class SingBoxConfigGenerator {
           'stack': 'system',
           'sniff': true,
           'sniff_override_destination': true,
-          'domain_strategy': 'prefer_ipv4'}
+          'domain_strategy': 'prefer_ipv4',
+        }
       ],
       'outbounds': [
         outbound,
@@ -198,12 +210,13 @@ class SingBoxConfigGenerator {
           {
             'network': 'udp',
             'port': [443],
-            'outbound': 'block'
+            'action': 'reject', 'method': 'default', 'no_drop': true
           },
           {'ip_is_private': true, 'outbound': 'direct'},
         ],
         'final': 'proxy',
-        'auto_detect_interface': true}
+        'auto_detect_interface': true,
+      }
     };
   }
 
