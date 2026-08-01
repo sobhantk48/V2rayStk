@@ -1,7 +1,5 @@
 package com.example.v2ray_stk
 
-
-import com.example.v2ray_stk.vpn.StatsProvider
 import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
@@ -11,6 +9,7 @@ import android.os.Looper
 import androidx.annotation.NonNull
 import com.example.v2ray_stk.log.LogChannel
 import com.example.v2ray_stk.vpn.CommandClientBridge
+import com.example.v2ray_stk.vpn.StatsProvider
 import com.example.v2ray_stk.vpn.V2rayVpnService
 import com.example.v2ray_stk.vpn.VpnState
 import com.example.v2ray_stk.vpn.VpnStatus
@@ -28,7 +27,7 @@ class MainActivity : FlutterActivity() {
     private val eventChannelName = "com.v2ray.stk/vpn_status"
     private val vpnPrepareRequestCode = 0x0f2c
 
-    // هدف پینگ: هندشیک TCP روی پورت 80 که از داخل تانل عبور می‌کند
+    // fallback پینگ: هندشیک TCP روی پورت 80
     private val latencyHost = "www.gstatic.com"
     private val latencyPort = 80
     private val latencyTimeoutMs = 4000
@@ -40,7 +39,6 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // ثبت کانال لاگ
         LogChannel.register(flutterEngine)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
@@ -49,13 +47,14 @@ class MainActivity : FlutterActivity() {
                     "getStatus" -> result.success(VpnState.status)
 
                     "connect" -> {
-                    StatsProvider.reset()
+                        StatsProvider.reset()
                         prepareAndConnect(call.argument<String>("config") ?: "")
                         result.success(null)
                     }
 
                     "disconnect" -> {
-                    StatsProvider.reset()
+                        StatsProvider.stop()
+                        StatsProvider.reset()
                         disconnect()
                         result.success(null)
                     }
@@ -64,10 +63,6 @@ class MainActivity : FlutterActivity() {
 
                     "testLatency" -> measureLatency(result)
 
-                    "getStats" -> result.success(StatsProvider.snapshot())
-                    "testLatency" -> StatsProvider.testLatency { value ->
-                        result.success(value)
-                    }
                     else -> result.notImplemented()
                 }
             }
@@ -93,11 +88,16 @@ class MainActivity : FlutterActivity() {
 
     /**
      * کلیدها عیناً همان چیزی هستند که VpnStats.fromMap در فلاتر انتظار دارد.
-     * تا وقتی هسته اولین StatusMessage را نداده باشد (hasData == false)
-     * مقادیر صفر برمی‌گردند و UI صفر نشان می‌دهد، نه مقدار قدیمی.
+     * ترافیک از CommandClientBridge می‌آید، ping/location از StatsProvider.
      */
     private fun buildStatsMap(): Map<String, Any?> {
         val live = CommandClientBridge.hasData
+
+        // هسته دارد داده می‌دهد یعنی تانل بالاست: ترد ping/geo را روشن کن (idempotent)
+        if (live) StatsProvider.start()
+
+        val ping = StatsProvider.lastPingMs()
+
         return mapOf(
             "downloadBps" to if (live) CommandClientBridge.downlink else 0L,
             "uploadBps" to if (live) CommandClientBridge.uplink else 0L,
@@ -107,8 +107,8 @@ class MainActivity : FlutterActivity() {
             "goroutines" to CommandClientBridge.goroutines,
             "connectionsIn" to CommandClientBridge.connectionsIn,
             "connectionsOut" to CommandClientBridge.connectionsOut,
-            "location" to null,
-            "ping" to null
+            "location" to StatsProvider.lastLocation(),
+            "ping" to if (ping >= 0L) ping else null
         )
     }
 
@@ -116,7 +116,8 @@ class MainActivity : FlutterActivity() {
 
     private fun measureLatency(result: MethodChannel.Result) {
         Thread {
-            val value = tcpHandshakeMillis()
+            val cached = StatsProvider.lastPingMs()
+            val value = if (cached >= 0L) cached.toInt() else tcpHandshakeMillis()
             mainHandler.post { result.success(value) }
         }.apply { isDaemon = true }.start()
     }
@@ -174,35 +175,6 @@ class MainActivity : FlutterActivity() {
                 VpnState.update(VpnStatus.DISCONNECTED)
             }
             pendingConfig = null
-        }
-    }
-
-    private fun statsSnapshot(): Map<String, Any> {
-        return runCatching {
-            mapOf(
-            "uplink" to CommandClientBridge.uplink,
-            "downlink" to CommandClientBridge.downlink,
-            "uplinkTotal" to CommandClientBridge.uplinkTotal,
-            "downlinkTotal" to CommandClientBridge.downlinkTotal,
-            "connectionsIn" to CommandClientBridge.connectionsIn,
-            "connectionsOut" to CommandClientBridge.connectionsOut,
-            "memory" to CommandClientBridge.memory,
-            "goroutines" to CommandClientBridge.goroutines
-        )
-        }.getOrElse { emptyMap() }
-    }
-
-    private fun measureLatency(host: String, port: Int, timeoutMs: Int): Int {
-        if (host.isBlank()) return -1
-        return try {
-            val socket = Socket()
-            val t0 = System.nanoTime()
-            socket.connect(InetSocketAddress(host, port), timeoutMs)
-            val elapsed = ((System.nanoTime() - t0) / 1000000L).toInt()
-            runCatching { socket.close() }
-            elapsed
-        } catch (e: Throwable) {
-            -1
         }
     }
 }
