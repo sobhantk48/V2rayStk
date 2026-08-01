@@ -154,7 +154,7 @@ class V2rayVpnService : VpnService() {
             .setMtu(TUN_MTU)
             .addAddress(TUN_ADDRESS, TUN_PREFIX)
             .addRoute("0.0.0.0", 0)
-            .addDnsServer("172.19.0.1")
+            .addDnsServer("172.19.0.2")
 
         if (Build.VERSION.SDK_INT >= 29) {
             builder.setMetered(false)
