@@ -1,5 +1,7 @@
 package com.example.v2ray_stk
 
+
+import com.example.v2ray_stk.vpn.StatsProvider
 import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
@@ -47,11 +49,13 @@ class MainActivity : FlutterActivity() {
                     "getStatus" -> result.success(VpnState.status)
 
                     "connect" -> {
+                    StatsProvider.reset()
                         prepareAndConnect(call.argument<String>("config") ?: "")
                         result.success(null)
                     }
 
                     "disconnect" -> {
+                    StatsProvider.reset()
                         disconnect()
                         result.success(null)
                     }
@@ -60,6 +64,10 @@ class MainActivity : FlutterActivity() {
 
                     "testLatency" -> measureLatency(result)
 
+                    "getStats" -> result.success(StatsProvider.snapshot())
+                    "testLatency" -> StatsProvider.testLatency { value ->
+                        result.success(value)
+                    }
                     else -> result.notImplemented()
                 }
             }
