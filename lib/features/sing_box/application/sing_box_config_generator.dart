@@ -102,21 +102,95 @@ class SingBoxConfigGenerator {
     return outbound;
   }
 
-  void _addTransport(
-      Map<String, dynamic> outbound, Map<String, String> params) {
-    final type = params['type'] ?? '';
-    if (type == 'ws') {
-      outbound['transport'] = {
-        'type': 'ws',
-        'path': params['path'] ?? '/',
-        'headers': {'Host': params['host'] ?? ''}
-      };
-    } else if (type == 'grpc') {
-      outbound['transport'] = {
-        'type': 'grpc',
-        'service_name': params['serviceName'] ?? ''
-      };
+  void _addTransport(Map<String, dynamic> outbound, Map<String, String> params) {
+    final String type = (params['type'] ?? '').toLowerCase();
+    if (type.isEmpty || type == 'tcp' || type == 'raw' || type == 'none') {
+      return; // ترنسپورت خام؛ چیزی اضافه نمی‌شود
     }
+
+    final String decoded = _decodeOnce(params['path'] ?? '/');
+    String cleanPath = decoded;
+    int maxEarlyData = int.tryParse(params['ed'] ?? '') ?? 0;
+    final int qm = decoded.indexOf('?');
+    if (qm >= 0) {
+      cleanPath = decoded.substring(0, qm);
+      final q = Uri.splitQueryString(decoded.substring(qm + 1));
+      maxEarlyData = int.tryParse(q['ed'] ?? '') ?? maxEarlyData;
+    }
+    if (cleanPath.isEmpty) cleanPath = '/';
+    if (!cleanPath.startsWith('/')) cleanPath = '/\$cleanPath';
+
+    final String host = _transportHost(outbound, params);
+
+    switch (type) {
+      case 'ws':
+      case 'websocket':
+        final Map<String, dynamic> ws = {'type': 'ws', 'path': cleanPath};
+        if (host.isNotEmpty) ws['headers'] = {'Host': host};
+        if (maxEarlyData > 0) {
+          ws['max_early_data'] = maxEarlyData;
+          ws['early_data_header_name'] = 'Sec-WebSocket-Protocol';
+        }
+        outbound['transport'] = ws;
+        break;
+
+      case 'httpupgrade':
+        final Map<String, dynamic> hu = {
+          'type': 'httpupgrade',
+          'path': cleanPath,
+        };
+        if (host.isNotEmpty) hu['host'] = host;
+        outbound['transport'] = hu;
+        break;
+
+      case 'grpc':
+        outbound['transport'] = {
+          'type': 'grpc',
+          'service_name': params['serviceName'] ?? params['servicename'] ?? '',
+        };
+        break;
+
+      case 'http':
+      case 'h2':
+        final Map<String, dynamic> h = {'type': 'http', 'path': cleanPath};
+        if (host.isNotEmpty) h['host'] = [host];
+        final String method = params['method'] ?? '';
+        if (method.isNotEmpty) h['method'] = method;
+        outbound['transport'] = h;
+        break;
+
+      case 'quic':
+        outbound['transport'] = {'type': 'quic'};
+        break;
+
+      default:
+        throw const SingBoxConfigException('ترنسپورت پشتیبانی‌نشده: \$type');
+    }
+  }
+
+  /// یک مرحله percent-decode با محافظت از ورودی نامعتبر
+  String _decodeOnce(String value) {
+    try {
+      return Uri.decodeComponent(value);
+    } catch (_) {
+      return value;
+    }
+  }
+
+  /// انتخاب Host برای ترنسپورت: host → sni → server_name → آدرس سرور
+  String _transportHost(
+      Map<String, dynamic> outbound, Map<String, String> params) {
+    final String host = (params['host'] ?? '').trim();
+    if (host.isNotEmpty) return host;
+    final String sni = (params['sni'] ?? '').trim();
+    if (sni.isNotEmpty) return sni;
+    final tls = outbound['tls'];
+    if (tls is Map && tls['server_name'] is String) {
+      final String sn = (tls['server_name'] as String).trim();
+      if (sn.isNotEmpty) return sn;
+    }
+    final server = outbound['server'];
+    return server is String ? server : '';
   }
 
   Map<String, dynamic> _buildTrojanOutbound(
