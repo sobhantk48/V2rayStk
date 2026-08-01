@@ -45,9 +45,27 @@ object SingBoxBridge {
                 LogStore.add("checkConfig خطا: ${it.message}", levelHint = "error", tag = "core")
             }
 
+        // گام ۱: CommandServer قبل از هسته بالا می‌آید تا command.sock ساخته شود.
+        CommandServerBridge.onServiceClose = { runCatching { stopInternal() } }
+        val serverReady = CommandServerBridge.start()
+
+        // گام ۲: راه‌اندازی هستهٔ sing-box
         val service = Libbox.newService(config, platform)
         service.start()
         boxService = service
+
+        // گام ۳: اتصال هسته به CommandServer و سپس کلاینت آمار/لاگ
+        if (serverReady) {
+            CommandServerBridge.attachService(service)
+            CommandClientBridge.stop()
+            CommandClientBridge.start()
+        } else {
+            LogStore.add(
+                "CommandServer فعال نشد؛ آمار زندهٔ سرعت/لاگ در دسترس نخواهد بود",
+                levelHint = "warn",
+                tag = "core",
+            )
+        }
 
         Log.d(TAG, "sing-box started")
         LogStore.add("sing-box راه‌اندازی شد", levelHint = "info", tag = "core")
@@ -59,11 +77,16 @@ object SingBoxBridge {
     }
 
     private fun stopInternal() {
+        runCatching { CommandClientBridge.stop() }
+
         boxService?.let { svc ->
             runCatching { svc.close() }
                 .onFailure { Log.w(TAG, "close failed", it) }
         }
         boxService = null
+
+        runCatching { CommandServerBridge.stop() }
+
         currentTunFd = -1
     }
 
@@ -71,7 +94,8 @@ object SingBoxBridge {
         if (setupDone) return
 
         val basePathValue = context.filesDir.absolutePath
-        val workingPathValue = File(context.filesDir, "sing-box").apply { mkdirs() }.absolutePath
+        val workingPathValue =
+            File(context.filesDir, "sing-box").apply { mkdirs() }.absolutePath
         val tempPathValue = context.cacheDir.absolutePath
 
         val options = SetupOptions()
@@ -82,6 +106,10 @@ object SingBoxBridge {
 
         Libbox.setup(options)
         setupDone = true
-        LogStore.add("Libbox.setup انجام شد (base=$basePathValue)", levelHint = "info", tag = "core")
+        LogStore.add(
+            "Libbox.setup انجام شد (base=$basePathValue)",
+            levelHint = "info",
+            tag = "core",
+        )
     }
 }
