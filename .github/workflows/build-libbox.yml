@@ -8,52 +8,51 @@ on:
 jobs:
   build-libbox:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 60
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
-      
-      - name: Setup Android NDK
+          go-version: '1.22.x'
+
+      - name: Use preinstalled NDK
         run: |
-          wget -q https://dl.google.com/android/repository/android-ndk-r27-linux.zip
-          unzip -q android-ndk-r27-linux.zip
-          echo "ANDROID_NDK_HOME=$PWD/android-ndk-r27" >> $GITHUB_ENV
-      
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+          echo "NDK: $ANDROID_NDK_LATEST_HOME"
+
+      - name: Clone sing-box (stable tag)
+        run: |
+          git clone --depth=1 --branch v1.12.4 \
+            https://github.com/SagerNet/sing-box.git
+
       - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
-          gomobile init
-      
-      - name: Clone sing-box
-        run: |
-          git clone --depth=1 https://github.com/SagerNet/sing-box.git
-          cd sing-box
-          git checkout dev-next  # یا آخرین نسخه
-      
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
       - name: Build libbox with embedded Tor
+        working-directory: sing-box
         run: |
-          cd sing-box
-          go run ./cmd/internal/build_libbox \
-            -target=android \
-            -output=../android/app/libs/libbox.aar \
-            -tags="with_embedded_tor,with_clash_api,with_quic,with_wireguard,with_ech,with_utls,with_reality_server,with_gvisor"
-      
+          go get golang.org/x/mobile/bind
+          gomobile init
+          gomobile bind -v \
+            -target=android/arm64 \
+            -androidapi 26 \
+            -javapkg=io.nekohasekai \
+            -libname=box \
+            -trimpath \
+            -tags="with_gvisor,with_quic,with_wireguard,with_utls,with_ech,with_clash_api,with_embedded_tor" \
+            -o ../libbox.aar \
+            ./experimental/libbox
+
       - name: Upload AAR
         uses: actions/upload-artifact@v4
         with:
           name: libbox-with-tor
-          path: android/app/libs/libbox.aar
+          path: libbox.aar
           retention-days: 30
-      
-      - name: Commit to repo
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add android/app/libs/libbox.aar
-          git commit -m "🔧 Update libbox.aar with embedded Tor [ci skip]" || echo "No changes"
-          git push
