@@ -44,7 +44,6 @@ jobs:
             -target=android/arm64 \
             -androidapi 26 \
             -javapkg=io.nekohasekai \
-            -libname=box \
             -trimpath \
             -tags="with_gvisor,with_quic,with_wireguard,with_utls,with_ech,with_clash_api,with_embedded_tor" \
             -o ../libbox.aar \
