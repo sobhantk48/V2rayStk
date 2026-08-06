@@ -17,7 +17,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: '1.22.x'
 
       - name: Use preinstalled NDK
         run: |
