@@ -2,6 +2,8 @@ package com.example.v2ray_stk.vpn
 
 import android.content.Context
 import android.util.Log
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.concurrent.thread
@@ -49,6 +51,19 @@ object TorDaemon {
                 pb.directory(context.filesDir)
                 pb.redirectErrorStream(true)
                 torProcess = pb.start()
+
+            // شروع خوندن لاگ‌های Tor
+            thread {
+                try {
+                    val reader = BufferedReader(InputStreamReader(torProcess!!.inputStream))
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        Log.d(TAG, "Tor Output: $line")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading Tor stream", e)
+                }
+            }
                 Log.i(TAG, "Tor daemon started successfully on port 9050 \uD83D\uDE80")
 
             } catch (e: Exception) {
