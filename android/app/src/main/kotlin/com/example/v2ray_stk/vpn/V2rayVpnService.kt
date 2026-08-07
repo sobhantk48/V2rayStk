@@ -11,6 +11,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import java.net.Socket
+import kotlin.concurrent.thread
 import androidx.core.app.NotificationCompat
 
 class V2rayVpnService : VpnService() {
@@ -221,4 +223,19 @@ class V2rayVpnService : VpnService() {
             manager.createNotificationChannel(channel)
         }
     }
+
+    private fun waitForPort(port: Int, timeoutMs: Long): Boolean {
+        val startTime = System.currentTimeMillis()
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            try {
+                Socket("127.0.0.1", port).use {
+                    return true
+                }
+            } catch (e: Exception) {
+                Thread.sleep(500)
+            }
+        }
+        return false
+    }
+
 }
