@@ -14,10 +14,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Setup Go 1.22 (force)
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'
+          go-version: '1.22.9'  # نسخه دقیق، نه range!
+          cache: false
+
+      - name: Verify Go version
+        run: |
+          go version
+          which go
+          go env GOROOT
 
       - name: Use preinstalled NDK
         run: |
@@ -29,22 +36,30 @@ jobs:
           git clone --depth=1 --branch v1.12.4 \
             https://github.com/SagerNet/sing-box.git
 
-      - name: Install gomobile
+      - name: Install gomobile with Go 1.22
         run: |
+          export GOROOT=$(go env GOROOT)
+          export GOPATH=$(go env GOPATH)
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
+      - name: Init gomobile with forced Go 1.22
+        run: |
+          export GOROOT=$(go env GOROOT)
+          gomobile init -v
+
       - name: Build libbox with embedded Tor
         working-directory: sing-box
         run: |
+          go version  # دوباره چک کن!
           go get golang.org/x/mobile/bind
-          gomobile init
           gomobile bind -v \
             -target=android/arm64 \
             -androidapi 26 \
             -javapkg=io.nekohasekai \
             -trimpath \
+            -ldflags="-s -w" \
             -tags="with_gvisor,with_quic,with_wireguard,with_utls,with_ech,with_clash_api,with_embedded_tor" \
             -o ../libbox.aar \
             ./experimental/libbox
@@ -55,3 +70,4 @@ jobs:
           name: libbox-with-tor
           path: libbox.aar
           retention-days: 30
+
