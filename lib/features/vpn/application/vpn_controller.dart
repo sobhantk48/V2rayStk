@@ -1,3 +1,4 @@
+import '../../profiles/domain/profile_type.dart';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

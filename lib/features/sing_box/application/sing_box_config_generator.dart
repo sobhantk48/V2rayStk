@@ -38,6 +38,8 @@ class SingBoxConfigGenerator {
     const tag = 'proxy';
 
     switch (profile.type) {
+      case ProfileType.socks:
+        return _buildTorOutbound(profile);
       case ProfileType.vless:
       case ProfileType.reality:
         return _buildVlessOutbound(uri, params, tag);

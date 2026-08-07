@@ -1,32 +1,52 @@
 import re
-import os
 
-file_path = "android/app/src/main/kotlin/com/example/v2ray_stk/vpn/V2rayVpnService.kt"
+file_path = 'lib/features/vpn/application/vpn_controller.dart'
 
-with open(file_path, "r", encoding="utf-8") as f:
-    content = f.read()
+try:
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
 
-# 1. درست کردن سینتکس خراب تابع establishTun
-content = content.replace(
-    "private fun establishTun()\n    TorDaemon.start(this): ParcelFileDescriptor? {",
-    "private fun establishTun(): ParcelFileDescriptor? {\n        TorDaemon.start(this)"
-)
-content = content.replace(
-    "private fun establishTun() TorDaemon.start(this): ParcelFileDescriptor? {",
-    "private fun establishTun(): ParcelFileDescriptor? {\n        TorDaemon.start(this)"
-)
+    # الگوی پیدا کردن تابع قدیمی همراه با اون براکت‌ها و ریترن‌های اضافه
+    pattern = re.compile(
+        r'Future<Profile>\s*_resolveActiveProfile\(\)\s*async\s*\{.*?(?:throw\s+const\s+SingBoxConfigException\([^;]+;\s*\n?\s*\}\s*\n?\s*return\s+profiles\.firstWhere\([\s\S]*?;\s*\n?\s*\}|throw\s+const\s+SingBoxConfigException\([^;]+;\s*\n?\s*\})',
+        re.DOTALL
+    )
 
-# 2. حل مشکل tun!!.fd و استفاده از detachFd() برای سینگ‌باکس
-# اولی که تو لاگ هست رو به همون فرمت استرینگ امن تغییر میدیم
-content = content.replace("tun!!.fd", "tun.detachFd()")
+    # نسخه تمیز و جدید تابع
+    new_function = """Future<Profile> _resolveActiveProfile() async {
+    final List<Profile> profiles = await ref.read(profilesProvider.future);
+    final adminReader = ref.read(adminSettingsReaderProvider);
+    final adminSettings = await adminReader.read();
 
-# برای احتیاط اگر tun.fd خالی هم مونده بود:
-content = content.replace("tun.fd", "tun.detachFd()")
+    if (profiles.isNotEmpty) {
+      final active = profiles.where((p) => p.isActive).toList();
+      return active.isNotEmpty ? active.first : profiles.first;
+    }
 
-# 3. جابجایی TorDaemon از خط 111 (اگر اشتباهی اونجا افتاده)
-content = content.replace("val tun = establishTun()\nTorDaemon.start(this)", "val tun = establishTun()")
+    // اگر هیچ پروفایلی نبود ولی تور فعال بود، یک پروفایل مجازی تور می‌سازیم
+    if (adminSettings.torEnabled) {
+      return Profile(
+        id: 'tor_standalone_auto',
+        name: 'Tor Direct Network',
+        type: ProfileType.socks,
+        server: '127.0.0.1',
+        port: 9050,
+        isActive: true,
+        rawConfig: 'socks5://127.0.0.1:9050',
+        createdAt: DateTime.now(),
+      );
+    }
 
-with open(file_path, "w", encoding="utf-8") as f:
-    f.write(content)
+    throw const SingBoxConfigException('هیچ کانفیگی برای اتصال انتخاب نشده است. لطفاً یک کانفیگ اضافه کنید یا در پنل ادمین مسیریابی Tor را روشن کنید.');
+  }"""
 
-print("✅ فایل V2rayVpnService.kt با موفقیت جراحی شد! حالا پوش کن تو گیت‌هاب اکشنز.")
+    if pattern.search(content):
+        fixed_content = pattern.sub(new_function, content)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(fixed_content)
+        print("✅ تابع _resolveActiveProfile به طور کامل اصلاح و تمیز شد!")
+    else:
+        print("⚠️ تابع قدیمی پیدا نشد. شاید قبلاً تغییرات دیگه‌ای داده بودی.")
+
+except Exception as e:
+    print(f"❌ خطا در اجرای اسکریپت: {e}")
