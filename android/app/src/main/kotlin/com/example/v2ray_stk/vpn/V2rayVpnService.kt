@@ -14,6 +14,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 
 class V2rayVpnService : VpnService() {
+    private var torDaemon: TorDaemon? = null
 
     companion object {
         const val ACTION_CONNECT = "com.v2ray.stk.CONNECT"
@@ -108,7 +109,8 @@ class V2rayVpnService : VpnService() {
 
         try {
             val tun = establishTun()
-            TorDaemon.start(this)
+            torDaemon = TorDaemon(this@V2rayVpnService)
+            torDaemon?.start()
             if (tun == null) {
                 Log.e(TAG, "establish() برگشت null (اجازه VPN صادر نشده؟)")
                 VpnState.update(VpnStatus.DISCONNECTED)
@@ -174,7 +176,7 @@ class V2rayVpnService : VpnService() {
     private fun stopVpn() {
         stopBridge()
         runCatching { SingBoxBridge.stop()
-        TorDaemon.stop() }
+        torDaemon?.stop() }
         runCatching { tunInterface?.close() }
         tunInterface = null
         VpnState.update(VpnStatus.DISCONNECTED)
