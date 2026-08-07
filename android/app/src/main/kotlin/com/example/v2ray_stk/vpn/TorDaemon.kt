@@ -3,6 +3,8 @@ package com.example.v2ray_stk.vpn
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.net.Socket
+import java.net.InetSocketAddress
 import kotlin.concurrent.thread
 
 class TorDaemon(private val context: Context) {
@@ -44,7 +46,14 @@ class TorDaemon(private val context: Context) {
                 pb.redirectErrorStream(true)
                 torProcess = pb.start()
 
-                Log.i(TAG, "✅ Tor daemon process started successfully!")
+                
+            Log.i(TAG, "⏳ Waiting for Tor SOCKS port to open...")
+            if (waitForPort(9050, 30)) {
+                Log.i(TAG, "✅ Tor daemon process started successfully and port 9050 is ready!")
+            } else {
+                Log.e(TAG, "❌ Tor failed to open port 9050 in time!")
+            }
+
 
                 // خوندن لاگ‌های Tor برای دیباگ بهتر
                 torProcess?.inputStream?.bufferedReader()?.useLines { lines ->
@@ -67,5 +76,20 @@ class TorDaemon(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping Tor daemon", e)
         }
+    }
+
+
+    private fun waitForPort(port: Int, maxRetries: Int): Boolean {
+        for (i in 1..maxRetries) {
+            try {
+                val socket = Socket()
+                socket.connect(InetSocketAddress("127.0.0.1", port), 1000)
+                socket.close()
+                return true
+            } catch (e: Exception) {
+                Thread.sleep(1000)
+            }
+        }
+        return false
     }
 }
