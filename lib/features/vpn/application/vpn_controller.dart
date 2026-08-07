@@ -11,6 +11,7 @@ import '../../sing_box/application/sing_box_config_generator.dart';
 import '../../sing_box/domain/sing_box_config.dart';
 import '../../sing_box/domain/sing_box_config_exception.dart';
 import 'admin_settings_reader.dart';
+import 'package:v2ray_stk/features/profiles/domain/profile_type.dart';
 
 enum VpnConnectionState {
   disconnected,
