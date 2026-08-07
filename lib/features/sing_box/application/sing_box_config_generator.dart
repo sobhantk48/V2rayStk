@@ -39,7 +39,7 @@ class SingBoxConfigGenerator {
 
     switch (profile.type) {
       case ProfileType.socks:
-        return _buildTorOutbound(profile);
+        return _buildTorOutbound(uri, tag);
       case ProfileType.vless:
       case ProfileType.reality:
         return _buildVlessOutbound(uri, params, tag);
