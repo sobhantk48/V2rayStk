@@ -112,11 +112,6 @@ class VpnController extends Notifier<VpnConnectionState> {
     throw const SingBoxConfigException('هیچ کانفیگی برای اتصال انتخاب نشده است. لطفاً یک کانفیگ اضافه کنید یا در پنل ادمین مسیریابی Tor را روشن کنید.');
   }
 
-    return profiles.firstWhere(
-      (Profile item) => item.isActive,
-      orElse: () => profiles.first,
-    );
-  }
 
   /// کانفیگ پروفایل را می‌سازد و تنظیمات پنل ادمین را روی آن اعمال می‌کند.
   Future<String> _buildConfigJson(Profile profile) async {
