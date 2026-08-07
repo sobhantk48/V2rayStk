@@ -117,12 +117,13 @@ class V2rayVpnService : VpnService() {
             }
 
             tunInterface = tun
+            val fd = tun.detachFd()
             Log.d(
                 TAG,
-                "tun established fd=${tun.detachFd()} mtu=$TUN_MTU addr=$TUN_ADDRESS/$TUN_PREFIX",
+                "tun established fd=$fd mtu=$TUN_MTU addr=$TUN_ADDRESS/$TUN_PREFIX",
             )
 
-            SingBoxBridge.start(this, tun.detachFd(), config)
+            SingBoxBridge.start(this, fd, config)
             VpnState.update(VpnStatus.CONNECTED)
 
             startBridgeWatch()
