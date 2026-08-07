@@ -108,7 +108,7 @@ class V2rayVpnService : VpnService() {
 
         try {
             val tun = establishTun()
-        TorDaemon.start(this)
+            TorDaemon.start(this)
             if (tun == null) {
                 Log.e(TAG, "establish() برگشت null (اجازه VPN صادر نشده؟)")
                 VpnState.update(VpnStatus.DISCONNECTED)
@@ -149,8 +149,7 @@ class V2rayVpnService : VpnService() {
         bridgeRetry = 0
     }
 
-    private fun establishTun()
-        TorDaemon.start(this): ParcelFileDescriptor? {
+    private fun establishTun(): ParcelFileDescriptor? {
         val builder = Builder()
             .setSession("V2ray Stk")
             .setMtu(TUN_MTU)
