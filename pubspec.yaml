@@ -29,4 +29,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/translations/en.json
+    - assets/bin/arm64-v8a/tor
     - assets/translations/fa.json
