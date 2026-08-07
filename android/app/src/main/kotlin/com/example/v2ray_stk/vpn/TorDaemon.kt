@@ -2,72 +2,59 @@ package com.example.v2ray_stk.vpn
 
 import android.content.Context
 import android.util.Log
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.File
-import java.io.FileOutputStream
 import kotlin.concurrent.thread
 
-object TorDaemon {
+class TorDaemon(private val context: Context) {
     private var torProcess: Process? = null
-    private const val TAG = "TorDaemon"
+    private val TAG = "TorDaemon"
 
-    fun start(context: Context) {
+    fun start() {
         if (torProcess != null) {
-            Log.i(TAG, "Tor is already running!")
+            Log.d(TAG, "Tor daemon is already running.")
             return
         }
 
         thread {
             try {
-                val torBinary = File(context.filesDir, "tor")
-                val torrc = File(context.filesDir, "torrc")
-                val dataDir = File(context.filesDir, "tor_data")
-
-                if (!dataDir.exists()) dataDir.mkdirs()
-
-                // استخراج فایل از assets فلاتر به حافظه داخلی در صورت عدم وجود
-                if (!torBinary.exists() || torBinary.length() == 0L) {
-                    Log.i(TAG, "Extracting Tor binary...")
-                    context.assets.open("flutter_assets/assets/bin/arm64-v8a/tor").use { input ->
-                        FileOutputStream(torBinary).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    torBinary.setExecutable(true)
+                // Read binary from nativeLibraryDir to comply with Android W^X security
+                val torBinary = File(context.applicationInfo.nativeLibraryDir, "libtor.so")
+                
+                if (!torBinary.exists()) {
+                    Log.e(TAG, "❌ Tor binary (libtor.so) not found at ${torBinary.absolutePath}")
+                    return@thread
                 }
 
-                // ساخت کانفیگ اختصاصی برای Tor روی پورت 9050
-                val torrcContent = """
-                    SocksPort 9050
-                    DataDirectory ${dataDir.absolutePath}
-                    Log notice stdout
-                """.trimIndent()
-                torrc.writeText(torrcContent)
+                val torrc = File(context.filesDir, "torrc")
+                if (!torrc.exists()) {
+                    torrc.writeText("""
+                        SocksPort 9050
+                        DataDirectory ${context.filesDir.absolutePath}/tordata
+                        Log notice stdout
+                    """.trimIndent())
+                }
 
-                // اجرای پروسه
-                Log.i(TAG, "Starting Tor daemon...")
+                val dataDir = File(context.filesDir, "tordata")
+                if (!dataDir.exists()) dataDir.mkdirs()
+
+                Log.d(TAG, "Starting Tor from native library dir: ${torBinary.absolutePath}")
+                
                 val pb = ProcessBuilder(torBinary.absolutePath, "-f", torrc.absolutePath)
                 pb.directory(context.filesDir)
                 pb.redirectErrorStream(true)
                 torProcess = pb.start()
 
-            // شروع خوندن لاگ‌های Tor
-            thread {
-                try {
-                    val reader = BufferedReader(InputStreamReader(torProcess!!.inputStream))
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        Log.d(TAG, "Tor Output: $line")
+                Log.i(TAG, "✅ Tor daemon process started successfully!")
+
+                // خوندن لاگ‌های Tor برای دیباگ بهتر
+                torProcess?.inputStream?.bufferedReader()?.useLines { lines ->
+                    lines.forEach { line ->
+                        Log.d("TorLogs", line)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error reading Tor stream", e)
                 }
-            }
-                Log.i(TAG, "Tor daemon started successfully on port 9050 \uD83D\uDE80")
 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Tor daemon \uD83D\uDE22", e)
+                Log.e(TAG, "❌ Failed to start Tor daemon", e)
             }
         }
     }
@@ -76,9 +63,9 @@ object TorDaemon {
         try {
             torProcess?.destroy()
             torProcess = null
-            Log.i(TAG, "Tor daemon stopped \uD83D\uDED1")
+            Log.i(TAG, "🛑 Tor daemon stopped")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to stop Tor", e)
+            Log.e(TAG, "Error stopping Tor daemon", e)
         }
     }
 }
