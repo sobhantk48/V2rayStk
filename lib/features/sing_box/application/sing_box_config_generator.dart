@@ -319,13 +319,4 @@ class SingBoxConfigGenerator {
     };
   }
 
-  Map<String, dynamic> _buildTorOutbound(Uri uri, String tag) {
-    return {
-      'type': 'socks',
-      'tag': tag,
-      'server': '127.0.0.1',
-      'server_port': 9050,
-      'version': '5',
-    };
-  }
 }
