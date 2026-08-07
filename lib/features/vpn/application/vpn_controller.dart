@@ -97,7 +97,7 @@ class VpnController extends Notifier<VpnConnectionState> {
     }
 
     // اگر هیچ پروفایلی نبود ولی تور فعال بود، یک پروفایل مجازی تور می‌سازیم
-    if (adminSettings.enableTor) {
+    if (adminSettings.torEnabled) {
       return Profile(
         id: 'tor_standalone_auto',
         name: 'Tor Direct Network',
