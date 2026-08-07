@@ -89,7 +89,8 @@ class VpnController extends Notifier<VpnConnectionState> {
   /// پروفایل فعال، یا در نبود آن اولین پروفایل موجود.
     Future<Profile> _resolveActiveProfile() async {
     final List<Profile> profiles = await ref.read(profilesProvider.future);
-    final adminSettings = await ref.read(adminSettingsReaderProvider.future);
+    final adminReader = ref.read(adminSettingsReaderProvider);
+    final adminSettings = await adminReader.read();
 
     if (profiles.isNotEmpty) {
       final active = profiles.where((p) => p.isActive).toList();
@@ -105,6 +106,7 @@ class VpnController extends Notifier<VpnConnectionState> {
         server: '127.0.0.1',
         port: 9050,
         isActive: true,
+        rawConfig: 'socks5://127.0.0.1:9050',
         createdAt: DateTime.now(),
       );
     }
