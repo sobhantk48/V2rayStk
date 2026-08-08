@@ -10,6 +10,7 @@ import '../../sing_box/domain/sing_box_config_exception.dart';
 import '../../vpn/application/vpn_controller.dart';
 import '../../vpn/application/vpn_stats_controller.dart';
 import '../../vpn/domain/vpn_stats.dart';
+import 'package:v2ray_stk/features/vpn/presentation/tor_switch_widget.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -81,6 +82,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: <Widget>[
+            const TorSwitchWidget(),
             const SizedBox(height: 12),
             _ConnectButton(
               state: state,
