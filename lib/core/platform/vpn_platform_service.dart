@@ -18,12 +18,19 @@ class VpnPlatformService {
   /// MainActivity.kt یکسان بماند.
   /// کلید `torEnabled` هم‌نام با call.argument<Boolean>("torEnabled") است
   /// و مشخص می‌کند دیمون Tor در سرویس نیتیو اجرا شود یا نه.
-  Future<void> connect(String config, {bool torEnabled = false}) async {
+  Future<void> connect(
+    String config, {
+    bool torEnabled = false,
+    bool killSwitch = false,
+    bool alwaysOnVpn = false,
+  }) async {
     await _channel.invokeMethod<void>(
       'connect',
       <String, dynamic>{
         'config': config,
         'torEnabled': torEnabled,
+        'killSwitch': killSwitch,
+        'alwaysOnVpn': alwaysOnVpn,
       },
     );
   }

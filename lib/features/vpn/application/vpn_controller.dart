@@ -56,9 +56,12 @@ class VpnController extends Notifier<VpnConnectionState> {
     state = VpnConnectionState.connecting;
     try {
       final Profile profile = await _resolveActiveProfile();
+      final flags = await _readVpnFlags();
       await _service.connect(
         await _buildConfigJson(profile),
         torEnabled: await _isTorEnabled(),
+        killSwitch: flags.killSwitch,
+        alwaysOnVpn: flags.alwaysOnVpn,
       );
       state = VpnConnectionState.connected;
     } catch (_) {
@@ -82,9 +85,12 @@ class VpnController extends Notifier<VpnConnectionState> {
   Future<void> connectWithProfile(Profile profile) async {
     state = VpnConnectionState.connecting;
     try {
+      final flags = await _readVpnFlags();
       await _service.connect(
         await _buildConfigJson(profile),
         torEnabled: await _isTorEnabled(),
+        killSwitch: flags.killSwitch,
+        alwaysOnVpn: flags.alwaysOnVpn,
       );
       state = VpnConnectionState.connected;
     } catch (_) {
@@ -101,6 +107,19 @@ class VpnController extends Notifier<VpnConnectionState> {
       return settings.torEnabled;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// تنظیمات Kill Switch و Always-on VPN را از پنل ادمین می‌خواند.
+  Future<({bool killSwitch, bool alwaysOnVpn})> _readVpnFlags() async {
+    try {
+      final AdminSettings settings = await _reader.read();
+      return (
+        killSwitch: settings.killSwitch,
+        alwaysOnVpn: settings.alwaysOnVpn,
+      );
+    } catch (_) {
+      return (killSwitch: false, alwaysOnVpn: false);
     }
   }
 

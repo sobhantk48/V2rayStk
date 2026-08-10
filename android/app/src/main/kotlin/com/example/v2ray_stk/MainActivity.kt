@@ -34,6 +34,8 @@ class MainActivity : FlutterFragmentActivity() {
 
     private var pendingConfig: String? = null
     private var pendingTorEnabled: Boolean = false
+    private var pendingKillSwitch: Boolean = false
+    private var pendingAlwaysOnVpn: Boolean = false
     private var eventSink: EventChannel.EventSink? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -51,9 +53,14 @@ class MainActivity : FlutterFragmentActivity() {
                         StatsProvider.reset()
                         pendingTorEnabled =
                             call.argument<Boolean>("torEnabled") ?: false
+                        pendingKillSwitch =
+                            call.argument<Boolean>("killSwitch") ?: false
+                        pendingAlwaysOnVpn =
+                            call.argument<Boolean>("alwaysOnVpn") ?: false
                         prepareAndConnect(
                             call.argument<String>("config") ?: "",
                             pendingTorEnabled,
+                            pendingKillSwitch,
                         )
                         result.success(null)
                     }
@@ -148,22 +155,24 @@ class MainActivity : FlutterFragmentActivity() {
 
     // ------------------------------------------------------------------- vpn
 
-    private fun prepareAndConnect(config: String, torEnabled: Boolean) {
+    private fun prepareAndConnect(config: String, torEnabled: Boolean, killSwitch: Boolean) {
         val prepareIntent = VpnService.prepare(this)
         if (prepareIntent != null) {
             pendingConfig = config
             pendingTorEnabled = torEnabled
+            pendingKillSwitch = killSwitch
             startActivityForResult(prepareIntent, vpnPrepareRequestCode)
         } else {
-            startVpnService(config, torEnabled)
+            startVpnService(config, torEnabled, killSwitch)
         }
     }
 
-    private fun startVpnService(config: String, torEnabled: Boolean) {
+    private fun startVpnService(config: String, torEnabled: Boolean, killSwitch: Boolean) {
         val intent = Intent(this, V2rayVpnService::class.java).apply {
             action = V2rayVpnService.ACTION_CONNECT
             putExtra(V2rayVpnService.EXTRA_CONFIG, config)
             putExtra(V2rayVpnService.EXTRA_TOR_ENABLED, torEnabled)
+            putExtra(V2rayVpnService.EXTRA_KILL_SWITCH, killSwitch)
         }
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
     }
@@ -178,12 +187,14 @@ class MainActivity : FlutterFragmentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == vpnPrepareRequestCode) {
             if (resultCode == Activity.RESULT_OK) {
-                startVpnService(pendingConfig ?: "", pendingTorEnabled)
+                startVpnService(pendingConfig ?: "", pendingTorEnabled, pendingKillSwitch)
             } else {
                 VpnState.update(VpnStatus.DISCONNECTED)
             }
             pendingConfig = null
             pendingTorEnabled = false
+            pendingKillSwitch = false
+            pendingAlwaysOnVpn = false
         }
     }
 }

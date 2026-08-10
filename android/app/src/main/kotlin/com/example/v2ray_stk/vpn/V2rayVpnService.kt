@@ -24,6 +24,7 @@ class V2rayVpnService : VpnService() {
         const val EXTRA_CONFIG = "extra_config"
         const val EXTRA_TOR_ENABLED = "extra_tor_enabled"
 
+        const val EXTRA_KILL_SWITCH = "extra_kill_switch"
         private const val TAG = "V2rayVpnService"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "v2ray_stk_vpn"
@@ -99,13 +100,14 @@ class V2rayVpnService : VpnService() {
             else -> {
                 val config = intent?.getStringExtra(EXTRA_CONFIG).orEmpty()
                 val torEnabled = intent?.getBooleanExtra(EXTRA_TOR_ENABLED, false) ?: false
-                startVpn(config, torEnabled)
+                val killSwitch = intent?.getBooleanExtra(EXTRA_KILL_SWITCH, false) ?: false
+                startVpn(config, torEnabled, killSwitch)
             }
         }
         return START_STICKY
     }
 
-    private fun startVpn(config: String, torEnabled: Boolean) {
+    private fun startVpn(config: String, torEnabled: Boolean, killSwitch: Boolean = false) {
         stopping = false
         startForegroundSafely()
         VpnState.update(VpnStatus.CONNECTING)
@@ -118,7 +120,7 @@ class V2rayVpnService : VpnService() {
         }
 
         try {
-            val tun = establishTun()
+            val tun = establishTun(killSwitch)
             if (tun == null) {
                 Log.e(TAG, "establish() برگشت null (اجازه VPN صادر نشده؟)")
                 VpnState.update(VpnStatus.DISCONNECTED)
@@ -216,7 +218,10 @@ class V2rayVpnService : VpnService() {
         bridgeRetry = 0
     }
 
-    private fun establishTun(): ParcelFileDescriptor? {
+    private var currentKillSwitch: Boolean = false
+
+    private fun establishTun(killSwitch: Boolean = false): ParcelFileDescriptor? {
+        currentKillSwitch = killSwitch
         val builder = Builder()
             .setSession("V2ray Stk")
             .setMtu(TUN_MTU)
@@ -230,6 +235,12 @@ class V2rayVpnService : VpnService() {
 
         if (Build.VERSION.SDK_INT >= 21) {
             builder.allowFamily(android.system.OsConstants.AF_INET)
+        }
+
+        // Kill Switch: اگر فعال باشد ترافیک خارج از تونل مسدود می‌شود
+        if (killSwitch && Build.VERSION.SDK_INT >= 21) {
+            builder.setBlocking(true)
+            Log.i(TAG, "Kill Switch فعال است — ترافیک خارج از VPN مسدود شد")
         }
 
         // ترافیک خود اپ (و پروسه tor) از تونل خارج می‌ماند تا حلقه ایجاد نشود
