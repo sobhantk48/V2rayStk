@@ -105,21 +105,15 @@ class VpnController extends Notifier<VpnConnectionState> {
   }
 
   Future<Profile> _resolveActiveProfile() async {
-    final List<Profile> profiles = await ref.read(profilesProvider.future);
+    // TOR-ONLY PRIORITY
     final adminReader = ref.read(adminSettingsReaderProvider);
     final adminSettings = await adminReader.read();
 
-    if (profiles.isNotEmpty) {
-      final active = profiles.where((p) => p.isActive).toList();
-      return active.isNotEmpty ? active.first : profiles.first;
-    }
-
-    // اگر هیچ پروفایلی نبود ولی تور فعال بود، یک پروفایل مجازی تور می‌سازیم
     if (adminSettings.torEnabled) {
       return Profile(
         id: 'tor_standalone_auto',
         name: 'Tor Direct Network',
-        type: ProfileType.socks,
+        type: ProfileType.tor,
         server: '127.0.0.1',
         port: 9050,
         isActive: true,
@@ -128,7 +122,15 @@ class VpnController extends Notifier<VpnConnectionState> {
       );
     }
 
-    throw const SingBoxConfigException('هیچ کانفیگی برای اتصال انتخاب نشده است. لطفاً یک کانفیگ اضافه کنید یا در پنل ادمین مسیریابی Tor را روشن کنید.');
+    final List<Profile> profiles = await ref.read(profilesProvider.future);
+    if (profiles.isNotEmpty) {
+      final active = profiles.where((p) => p.isActive).toList();
+      return active.isNotEmpty ? active.first : profiles.first;
+    }
+
+    throw const SingBoxConfigException(
+      'هیچ پروفایلی انتخاب نشده است. یک کانفیگ اضافه کنید یا Tor را از پنل ادمین فعال کنید.',
+    );
   }
 
   /// کانفیگ پروفایل را می‌سازد و تنظیمات پنل ادمین را روی آن اعمال می‌کند.
