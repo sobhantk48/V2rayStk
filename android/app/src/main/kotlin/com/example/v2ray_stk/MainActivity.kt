@@ -33,6 +33,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val latencyTimeoutMs = 4000
 
     private var pendingConfig: String? = null
+    private var pendingTorEnabled: Boolean = false
     private var eventSink: EventChannel.EventSink? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -48,7 +49,12 @@ class MainActivity : FlutterFragmentActivity() {
 
                     "connect" -> {
                         StatsProvider.reset()
-                        prepareAndConnect(call.argument<String>("config") ?: "")
+                        pendingTorEnabled =
+                            call.argument<Boolean>("torEnabled") ?: false
+                        prepareAndConnect(
+                            call.argument<String>("config") ?: "",
+                            pendingTorEnabled,
+                        )
                         result.success(null)
                     }
 
@@ -142,20 +148,22 @@ class MainActivity : FlutterFragmentActivity() {
 
     // ------------------------------------------------------------------- vpn
 
-    private fun prepareAndConnect(config: String) {
+    private fun prepareAndConnect(config: String, torEnabled: Boolean) {
         val prepareIntent = VpnService.prepare(this)
         if (prepareIntent != null) {
             pendingConfig = config
+            pendingTorEnabled = torEnabled
             startActivityForResult(prepareIntent, vpnPrepareRequestCode)
         } else {
-            startVpnService(config)
+            startVpnService(config, torEnabled)
         }
     }
 
-    private fun startVpnService(config: String) {
+    private fun startVpnService(config: String, torEnabled: Boolean) {
         val intent = Intent(this, V2rayVpnService::class.java).apply {
             action = V2rayVpnService.ACTION_CONNECT
             putExtra(V2rayVpnService.EXTRA_CONFIG, config)
+            putExtra(V2rayVpnService.EXTRA_TOR_ENABLED, torEnabled)
         }
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
     }
@@ -170,11 +178,12 @@ class MainActivity : FlutterFragmentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == vpnPrepareRequestCode) {
             if (resultCode == Activity.RESULT_OK) {
-                startVpnService(pendingConfig ?: "")
+                startVpnService(pendingConfig ?: "", pendingTorEnabled)
             } else {
                 VpnState.update(VpnStatus.DISCONNECTED)
             }
             pendingConfig = null
+            pendingTorEnabled = false
         }
     }
 }

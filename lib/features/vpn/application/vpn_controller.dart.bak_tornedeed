@@ -104,6 +104,26 @@ class VpnController extends Notifier<VpnConnectionState> {
     }
   }
 
+  /// پروفایل فعال، یا در نبود آن اولین پروفایل موجود.
+    /// Tor فقط وقتی اجرا می‌شود که در پنل ادمین روشن باشد،
+  /// یا پروفایل فعال صراحتاً از نوع Tor باشد.
+  Future<bool> _isTorNeeded(Profile profile) async {
+    if (profile.type == ProfileType.tor) {
+      return true;
+    }
+    final AdminSettings settings = await _reader.read();
+    if (settings.torEnabled) {
+      return true;
+    }
+    final String raw = profile.rawConfig.toLowerCase();
+    if (profile.type == ProfileType.socks &&
+        (profile.server == '127.0.0.1' || profile.server == 'localhost') &&
+        profile.port == 9050) {
+      return true;
+    }
+    return raw.startsWith('tor://');
+  }
+
   Future<Profile> _resolveActiveProfile() async {
     final List<Profile> profiles = await ref.read(profilesProvider.future);
     final adminReader = ref.read(adminSettingsReaderProvider);
@@ -130,6 +150,7 @@ class VpnController extends Notifier<VpnConnectionState> {
 
     throw const SingBoxConfigException('هیچ کانفیگی برای اتصال انتخاب نشده است. لطفاً یک کانفیگ اضافه کنید یا در پنل ادمین مسیریابی Tor را روشن کنید.');
   }
+
 
   /// کانفیگ پروفایل را می‌سازد و تنظیمات پنل ادمین را روی آن اعمال می‌کند.
   Future<String> _buildConfigJson(Profile profile) async {

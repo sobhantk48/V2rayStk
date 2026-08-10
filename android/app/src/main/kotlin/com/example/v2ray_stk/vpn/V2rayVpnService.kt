@@ -11,7 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import java.net.Socket
+
 import kotlin.concurrent.thread
 import androidx.core.app.NotificationCompat
 
@@ -22,6 +22,7 @@ class V2rayVpnService : VpnService() {
         const val ACTION_CONNECT = "com.v2ray.stk.CONNECT"
         const val ACTION_DISCONNECT = "com.v2ray.stk.DISCONNECT"
         const val EXTRA_CONFIG = "extra_config"
+        const val EXTRA_TOR_ENABLED = "extra_tor_enabled"
 
         private const val TAG = "V2rayVpnService"
         private const val NOTIFICATION_ID = 1
@@ -92,13 +93,14 @@ class V2rayVpnService : VpnService() {
 
             else -> {
                 val config = intent?.getStringExtra(EXTRA_CONFIG).orEmpty()
-                startVpn(config)
+                val torEnabled = intent?.getBooleanExtra(EXTRA_TOR_ENABLED, false) ?: false
+                startVpn(config, torEnabled)
             }
         }
         return START_STICKY
     }
 
-    private fun startVpn(config: String) {
+    private fun startVpn(config: String, torEnabled: Boolean) {
         startForegroundSafely()
         VpnState.update(VpnStatus.CONNECTING)
 
@@ -111,13 +113,23 @@ class V2rayVpnService : VpnService() {
 
         try {
             val tun = establishTun()
-            torDaemon = TorDaemon(this@V2rayVpnService)
-            torDaemon?.start()
             if (tun == null) {
                 Log.e(TAG, "establish() برگشت null (اجازه VPN صادر نشده؟)")
                 VpnState.update(VpnStatus.DISCONNECTED)
                 stopVpn()
                 return
+            }
+
+            if (torEnabled) {
+                Log.d(TAG, "Tor فعال است، در حال راه‌اندازی TorDaemon")
+                runCatching {
+                    torDaemon = TorDaemon(this@V2rayVpnService)
+                    torDaemon?.start()
+                }.onFailure { t ->
+                    Log.e(TAG, "TorDaemon.start() failed: ${t.message}", t)
+                }
+            } else {
+                Log.d(TAG, "Tor غیرفعال است، TorDaemon اجرا نمی‌شود")
             }
 
             tunInterface = tun
@@ -177,8 +189,11 @@ class V2rayVpnService : VpnService() {
 
     private fun stopVpn() {
         stopBridge()
-        runCatching { SingBoxBridge.stop()
-        torDaemon?.stop() }
+        runCatching { SingBoxBridge.stop() }
+            .onFailure { Log.w(TAG, "SingBoxBridge.stop() failed: ${it.message}") }
+        runCatching { torDaemon?.stop() }
+            .onFailure { Log.w(TAG, "TorDaemon.stop() failed: ${it.message}") }
+        torDaemon = null
         runCatching { tunInterface?.close() }
         tunInterface = null
         VpnState.update(VpnStatus.DISCONNECTED)
@@ -222,20 +237,6 @@ class V2rayVpnService : VpnService() {
             )
             manager.createNotificationChannel(channel)
         }
-    }
-
-    private fun waitForPort(port: Int, timeoutMs: Long): Boolean {
-        val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            try {
-                Socket("127.0.0.1", port).use {
-                    return true
-                }
-            } catch (e: Exception) {
-                Thread.sleep(500)
-            }
-        }
-        return false
     }
 
 }

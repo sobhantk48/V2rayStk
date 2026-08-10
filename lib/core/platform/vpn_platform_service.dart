@@ -16,11 +16,14 @@ class VpnPlatformService {
   /// کانفیگ JSON هسته sing-box را به سرویس نیتیو می‌فرستد.
   /// کلید `config` باید با `call.argument<String>("config")` در
   /// MainActivity.kt یکسان بماند.
-  Future<void> connect(String config) async {
+  /// کلید `torEnabled` هم‌نام با call.argument<Boolean>("torEnabled") است
+  /// و مشخص می‌کند دیمون Tor در سرویس نیتیو اجرا شود یا نه.
+  Future<void> connect(String config, {bool torEnabled = false}) async {
     await _channel.invokeMethod<void>(
       'connect',
       <String, dynamic>{
         'config': config,
+        'torEnabled': torEnabled,
       },
     );
   }
