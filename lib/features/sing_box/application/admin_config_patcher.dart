@@ -41,6 +41,8 @@ class AdminConfigPatcher {
   }
 
   void _patchDns(Map<String, dynamic> config, AdminSettings settings) {
+    // در حالت Tor، DNS محلی (127.0.0.1:5353) نباید بازنویسی شود.
+    if (_usesTorDns(config)) return;
     final String address = _dnsAddress(settings);
     if (address.isEmpty) return;
 
@@ -65,7 +67,7 @@ class AdminConfigPatcher {
         if (s['tag'] == bootstrapTag) hasBootstrap = true;
       }
       if (!hasBootstrap) {
-        servers.insert(0, <String, dynamic>{
+        servers.add( <String, dynamic>{
           'tag': bootstrapTag,
           'address': '8.8.8.8',
           'detour': 'direct'
@@ -104,6 +106,25 @@ class AdminConfigPatcher {
       }
     }
     return 0;
+  }
+
+  /// آیا DNS محلی Tor در کانفیگ فعال است؟
+  bool _usesTorDns(Map<String, dynamic> config) {
+    final Object? dns = config['dns'];
+    if (dns is! Map) {
+      return false;
+    }
+    final Object? servers = dns['servers'];
+    if (servers is! List) {
+      return false;
+    }
+    for (final Object? server in servers) {
+      if (server is Map &&
+          (server['address'] ?? '').toString().contains('127.0.0.1:5353')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   String _dnsAddress(AdminSettings settings) {

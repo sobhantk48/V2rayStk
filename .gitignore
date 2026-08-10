@@ -78,3 +78,12 @@ android/app/libs/*.aar
 # اسکریپت‌های موقتی پچ
 patch_*.py
 patch_*.py
+.trash_bak/
+*.bak
+*.bak2
+*.bak_dns
+*.bak_tests
+*.bak_ignore
+*.bak_tornedeed
+V2rayStk_source_new.zip
+*_source_new.zip

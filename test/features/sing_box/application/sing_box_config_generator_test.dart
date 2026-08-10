@@ -44,7 +44,7 @@ void main() {
           (config.value['outbounds'] as List).first as Map<String, dynamic>;
 
       expect(outbound['type'], 'vmess');
-      expect(outbound['tag'], 'VMess_Test');
+      expect(outbound['tag'], 'proxy');
       expect(outbound['server'], 'example.com');
       expect(outbound['server_port'], 443);
       expect(outbound['uuid'], '11111111-1111-1111-1111-111111111111');

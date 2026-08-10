@@ -12,34 +12,39 @@ class SingBoxConfigGenerator {
   const SingBoxConfigGenerator();
 
   SingBoxConfig generate(Profile profile) {
+    final bool isTor = _isTorProfile(profile);
     try {
       final Map<String, dynamic>? json =
           _tryDecodeJsonObject(profile.rawConfig);
 
       if (json != null) {
         if (_looksLikeSingBoxConfig(json)) {
-          return SingBoxConfig(_wrap(_adoptSingBoxConfig(json)));
+          return SingBoxConfig(_wrap(_adoptSingBoxConfig(json), isTor: isTor));
         }
         return SingBoxConfig(
-          _wrap(_v2rayConverter.convert(json, tag: 'proxy')),
+          _wrap(_v2rayConverter.convert(json, tag: 'proxy'), isTor: isTor),
         );
       }
 
       // اگر لینک URI بود (مثل vless://)
-      return SingBoxConfig(_wrap(_buildOutboundFromUri(profile)));
+      return SingBoxConfig(_wrap(_buildOutboundFromUri(profile), isTor: isTor));
     } catch (e) {
       throw SingBoxConfigException('خطا در تولید کانفیگ: $e');
     }
   }
 
   Map<String, dynamic> _buildOutboundFromUri(Profile profile) {
+    // vmess به صورت base64(JSON) است و با Uri.parse قابل تجزیه نیست.
+    if (profile.type == ProfileType.vmess) {
+      return _buildVmessOutbound(profile, 'proxy');
+    }
     final uri = Uri.parse(profile.rawConfig);
     final params = uri.queryParameters;
     const tag = 'proxy';
 
     switch (profile.type) {
       case ProfileType.socks:
-        return _buildTorOutbound(uri, tag);
+        return _buildSocksOutbound(uri, params, tag);
       case ProfileType.vless:
       case ProfileType.reality:
         return _buildVlessOutbound(uri, params, tag);
@@ -47,6 +52,8 @@ class SingBoxConfigGenerator {
         return _buildTrojanOutbound(uri, params, tag);
       case ProfileType.shadowsocks:
         return _buildShadowsocksOutbound(uri, params, tag);
+      case ProfileType.http:
+        return _buildHttpOutbound(uri, params, tag);
       default:
         throw SingBoxConfigException(
             'پروتکل ${profile.type} هنوز به صورت کامل پشتیبانی نمی‌شود.');
@@ -223,7 +230,8 @@ class SingBoxConfigGenerator {
       'password': uri.userInfo};
   }
 
-  Map<String, dynamic> _wrap(Map<String, dynamic> outbound) {
+  Map<String, dynamic> _wrap(Map<String, dynamic> outbound,
+      {bool isTor = false}) {
     return {
       'log': {'level': 'info', 'timestamp': true},
       'experimental': {
@@ -233,32 +241,7 @@ class SingBoxConfigGenerator {
         },
         'cache_file': {'enabled': true},
       },
-      'dns': {
-        'servers': [
-          {
-            'tag': 'proxy-dns',
-            'address': 'tcp://1.1.1.1',
-            'detour': 'proxy',
-          },
-          {
-            'tag': 'local-dns',
-            'address': 'local',
-            'detour': 'direct',
-          },
-          {'tag': 'block-dns', 'address': 'rcode://success'},
-        ],
-        'rules': [
-          // فقط آدرس سرورهای خروجی با DNS سیستم حل شود تا لوپ ایجاد نشود
-          {
-            'outbound': ['any'],
-            'server': 'local-dns',
-          },
-        ],
-        'final': 'proxy-dns',
-        'strategy': 'ipv4_only',
-        'independent_cache': true,
-        'disable_cache': false,
-      },
+      'dns': _buildDns(isTor),
       'inbounds': [
         {
           'type': 'tun',
@@ -284,12 +267,213 @@ class SingBoxConfigGenerator {
         'rules': [
           {'protocol': 'dns', 'outbound': 'dns-out'},
           {'port': [53], 'outbound': 'dns-out'},
-          {'ip_is_private': true, 'outbound': 'direct'},
         ],
         'final': 'proxy',
         'auto_detect_interface': true,
       }
     };
+  }
+
+  /// تشخیص پروفایل تور: SOCKS روی لوکال‌هاست
+  bool _isTorProfile(Profile profile) {
+    if (profile.type != ProfileType.socks) return false;
+    try {
+      final uri = Uri.parse(profile.rawConfig.trim());
+      final String h = uri.host.toLowerCase();
+      return h == '127.0.0.1' || h == 'localhost' || h == '::1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// DNS داینامیک: تور از DNSPort محلی (direct)، بقیه از DNS راه‌دور (proxy)
+  Map<String, dynamic> _buildDns(bool isTor) {
+    final List<Map<String, dynamic>> servers = isTor
+        ? <Map<String, dynamic>>[
+            {
+              'tag': 'proxy-dns',
+              'address': 'udp://127.0.0.1:5353',
+              'detour': 'direct',
+            },
+            {'tag': 'block-dns', 'address': 'rcode://success'},
+          ]
+        : <Map<String, dynamic>>[
+            {
+              'tag': 'proxy-dns',
+              'address': 'tcp://1.1.1.1',
+              'detour': 'proxy',
+            },
+            {'tag': 'block-dns', 'address': 'rcode://success'},
+          ];
+
+    return <String, dynamic>{
+      'servers': servers,
+      'rules': <Map<String, dynamic>>[],
+      'final': 'proxy-dns',
+      'strategy': 'ipv4_only',
+      'independent_cache': true,
+      'disable_cache': false,
+    };
+  }
+
+  Map<String, dynamic> _buildSocksOutbound(
+      Uri uri, Map<String, String> params, String tag) {
+    final String host = uri.host.isNotEmpty ? uri.host : '127.0.0.1';
+    final int port = uri.hasPort ? uri.port : 9050;
+
+    final Map<String, dynamic> out = <String, dynamic>{
+      'type': 'socks',
+      'tag': tag,
+      'server': host,
+      'server_port': port,
+      'version': '5',
+    };
+
+    final String info = uri.userInfo;
+    if (info.isNotEmpty && info.contains(':')) {
+      final int k = info.indexOf(':');
+      out['username'] = Uri.decodeComponent(info.substring(0, k));
+      out['password'] = Uri.decodeComponent(info.substring(k + 1));
+    }
+    return out;
+  }
+
+  /// vmess://BASE64(JSON) را به outbound سازگار با sing-box تبدیل می‌کند.
+  Map<String, dynamic> _buildVmessOutbound(Profile profile, String tag) {
+    final String payload = profile.rawConfig
+        .trim()
+        .replaceFirst(RegExp(r'^vmess://', caseSensitive: false), '')
+        .trim();
+    if (payload.isEmpty) {
+      throw const SingBoxConfigException('محتوای لینک vmess خالی است.');
+    }
+
+    final Map<String, dynamic> node = _decodeVmessPayload(payload);
+
+    final String server = (node['add'] ?? node['address'] ?? '').toString();
+    final int port = _asInt(node['port']);
+    final String uuid = (node['id'] ?? node['uuid'] ?? '').toString();
+    if (server.isEmpty || port <= 0 || uuid.isEmpty) {
+      throw const SingBoxConfigException(
+          'لینک vmess ناقص است (add/port/id الزامی هستند).');
+    }
+
+    String security = (node['scy'] ?? node['security'] ?? 'auto').toString();
+    if (security.isEmpty || security == 'none') {
+      security = 'auto';
+    }
+
+    final Map<String, dynamic> outbound = <String, dynamic>{
+      'type': 'vmess',
+      'tag': tag,
+      'server': server,
+      'server_port': port,
+      'uuid': uuid,
+      'security': security,
+      'alter_id': _asInt(node['aid'] ?? node['alterId'] ?? 0),
+    };
+
+    final String net = (node['net'] ?? 'tcp').toString().toLowerCase();
+    final String host = (node['host'] ?? '').toString();
+    final String rawPath = (node['path'] ?? '').toString();
+    final String path = rawPath.isEmpty ? '/' : rawPath;
+    final String sniValue = (node['sni'] ?? '').toString();
+    final String sni = sniValue.isNotEmpty ? sniValue : host;
+    final String tls = (node['tls'] ?? '').toString().toLowerCase();
+
+    if (net == 'ws') {
+      outbound['transport'] = <String, dynamic>{
+        'type': 'ws',
+        'path': path,
+        if (host.isNotEmpty) 'headers': <String, dynamic>{'Host': host},
+      };
+    } else if (net == 'grpc') {
+      outbound['transport'] = <String, dynamic>{
+        'type': 'grpc',
+        'service_name': rawPath,
+      };
+    } else if (net == 'h2' || net == 'http') {
+      outbound['transport'] = <String, dynamic>{
+        'type': 'http',
+        if (host.isNotEmpty) 'host': <String>[host],
+        'path': path,
+      };
+    }
+
+    if (tls == 'tls' || tls == 'reality') {
+      outbound['tls'] = <String, dynamic>{
+        'enabled': true,
+        'server_name': sni.isNotEmpty ? sni : server,
+        'utls': <String, dynamic>{
+          'enabled': true,
+          'fingerprint': (node['fp'] ?? 'chrome').toString(),
+        },
+      };
+    }
+
+    return outbound;
+  }
+
+  Map<String, dynamic> _decodeVmessPayload(String payload) {
+    final String normalized = payload.replaceAll('-', '+').replaceAll('_', '/');
+    final int missing = (4 - normalized.length % 4) % 4;
+    final String padded = normalized + ('=' * missing);
+    final String decoded = utf8.decode(base64.decode(padded));
+    final Object? parsed = json.decode(decoded);
+    if (parsed is! Map) {
+      throw const SingBoxConfigException('ساختار JSON لینک vmess نامعتبر است.');
+    }
+    return Map<String, dynamic>.from(parsed);
+  }
+
+  /// http:// یا https:// با احراز هویت اختیاری.
+  Map<String, dynamic> _buildHttpOutbound(
+      Uri uri, Map<String, String> params, String tag) {
+    final List<String> credentials = uri.userInfo.split(':');
+    final String username =
+        credentials.isNotEmpty ? _safeDecode(credentials.first) : '';
+    final String password =
+        credentials.length > 1 ? _safeDecode(credentials[1]) : '';
+    final bool useTls = uri.scheme.toLowerCase() == 'https' ||
+        (params['security'] ?? '').toLowerCase() == 'tls';
+
+    final Map<String, dynamic> outbound = <String, dynamic>{
+      'type': 'http',
+      'tag': tag,
+      'server': uri.host,
+      'server_port': uri.hasPort ? uri.port : (useTls ? 443 : 80),
+    };
+    if (username.isNotEmpty) {
+      outbound['username'] = username;
+    }
+    if (password.isNotEmpty) {
+      outbound['password'] = password;
+    }
+    if (useTls) {
+      outbound['tls'] = <String, dynamic>{
+        'enabled': true,
+        'server_name': params['sni'] ?? uri.host,
+      };
+    }
+    return outbound;
+  }
+
+  String _safeDecode(String value) {
+    try {
+      return Uri.decodeComponent(value);
+    } catch (_) {
+      return value;
+    }
+  }
+
+  int _asInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString().trim() ?? '') ?? 0;
   }
 
   Map<String, dynamic>? _tryDecodeJsonObject(String raw) {
@@ -311,14 +495,5 @@ class SingBoxConfigGenerator {
     return json;
   }
 
-  Map<String, dynamic> _buildTorOutbound(Uri uri, String tag) {
-    return {
-      'type': 'socks',
-      'tag': tag,
-      'server': '127.0.0.1',
-      'server_port': 9050,
-      'version': '5',
-    };
-  }
 
 }
