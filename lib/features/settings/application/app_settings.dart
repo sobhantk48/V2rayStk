@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/platform/haptics.dart';
 
 /// حالت Split Tunneling
 enum SplitTunnelMode { off, include, exclude }
@@ -213,6 +214,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
           .values[modeIndex.clamp(0, SplitTunnelMode.values.length - 1)],
       splitTunnelApps: p.getStringList(_Keys.splitApps) ?? const <String>[],
     );
+    Haptics.enabled = state.hapticEnabled;
   }
 
   Future<void> setLanguage(String code) async {
@@ -221,6 +223,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
   }
 
   Future<void> setHaptic(bool v) async {
+    Haptics.enabled = v;
     state = state.copyWith(hapticEnabled: v);
     (await _p).setBool(_Keys.haptic, v);
   }

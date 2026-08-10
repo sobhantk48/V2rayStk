@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/platform/haptics.dart';
 import '../../../core/widgets/app_scaffold.dart';
 import '../../../l10n/strings.dart';
 import '../../sing_box/domain/sing_box_config_exception.dart';
@@ -39,13 +40,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _toggle(VpnConnectionState state) async {
     final VpnController controller = ref.read(vpnControllerProvider.notifier);
+    // بازخورد فوری لمس، مستقل از نتیجهٔ هسته.
+    Haptics.medium();
+
     try {
       if (state == VpnConnectionState.connected) {
         await controller.disconnect();
+        Haptics.light();
       } else if (state == VpnConnectionState.disconnected) {
         await controller.connect();
+        unawaited(Haptics.success());
       }
     } catch (error) {
+      unawaited(Haptics.error());
       if (!mounted) return;
       final String reason =
           error is SingBoxConfigException ? error.message : error.toString();

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/platform/haptics.dart';
 import '../../../core/widgets/app_scaffold.dart';
 import '../../../l10n/strings.dart';
 import '../../sing_box/domain/sing_box_config_exception.dart';
@@ -55,18 +58,26 @@ class HomeScreen extends ConsumerWidget {
     final VpnController controller = ref.read(vpnControllerProvider.notifier);
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
 
+    final bool wasConnected = state == VpnConnectionState.connected;
+    // بازخورد فوری لمس، مستقل از نتیجهٔ هسته.
+    Haptics.medium();
+
     try {
-      if (state == VpnConnectionState.connected) {
+      if (wasConnected) {
         await controller.disconnect();
+        Haptics.light();
       } else {
         await controller.connect();
+        unawaited(Haptics.success());
         await ref.read(vpnStatsProvider.notifier).refreshLatency();
       }
     } on SingBoxConfigException {
+      unawaited(Haptics.error());
       messenger.showSnackBar(
         SnackBar(content: Text(strings.noProfileSelected)),
       );
     } catch (_) {
+      unawaited(Haptics.error());
       messenger.showSnackBar(
         SnackBar(content: Text(strings.connectionFailed)),
       );

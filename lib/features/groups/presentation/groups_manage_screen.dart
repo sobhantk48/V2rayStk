@@ -55,7 +55,7 @@ class GroupsManageScreen extends ConsumerWidget {
           return ReorderableListView.builder(
             padding: const EdgeInsets.only(bottom: 88),
             itemCount: groups.length,
-            onReorder: (int oldIndex, int newIndex) {
+            onReorderItem: (int oldIndex, int newIndex) {
               final List<ProxyGroup> reordered = List<ProxyGroup>.of(groups);
               // ReorderableListView reports the target index before removal.
               final int target = newIndex > oldIndex ? newIndex - 1 : newIndex;

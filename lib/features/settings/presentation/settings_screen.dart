@@ -103,23 +103,26 @@ class SettingsScreen extends ConsumerWidget {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              RadioListTile<String>(
-                value: 'system',
+              RadioGroup<String>(
                 groupValue: current?.languageCode ?? 'system',
-                title: const Text('System / سیستم'),
                 onChanged: (String? v) => Navigator.pop(ctx, v),
-              ),
-              RadioListTile<String>(
-                value: 'fa',
-                groupValue: current?.languageCode ?? 'system',
-                title: const Text('فارسی'),
-                onChanged: (String? v) => Navigator.pop(ctx, v),
-              ),
-              RadioListTile<String>(
-                value: 'en',
-                groupValue: current?.languageCode ?? 'system',
-                title: const Text('English'),
-                onChanged: (String? v) => Navigator.pop(ctx, v),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String>(
+                      value: 'system',
+                      title: Text('System / سیستم'),
+                    ),
+                    RadioListTile<String>(
+                      value: 'fa',
+                      title: Text('فارسی'),
+                    ),
+                    RadioListTile<String>(
+                      value: 'en',
+                      title: Text('English'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
             ],

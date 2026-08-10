@@ -25,4 +25,22 @@ class Haptics {
     if (!enabled) return;
     HapticFeedback.selectionClick();
   }
+
+  /// الگوی موفقیت: دو ضربهٔ کوتاه پشت سر هم.
+  static Future<void> success() async {
+    if (!enabled) return;
+    HapticFeedback.mediumImpact();
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    HapticFeedback.lightImpact();
+  }
+
+  /// الگوی خطا: سه ضربهٔ سنگین کوتاه.
+  static Future<void> error() async {
+    if (!enabled) return;
+    HapticFeedback.heavyImpact();
+    await Future<void>.delayed(const Duration(milliseconds: 70));
+    HapticFeedback.heavyImpact();
+    await Future<void>.delayed(const Duration(milliseconds: 70));
+    HapticFeedback.heavyImpact();
+  }
 }
