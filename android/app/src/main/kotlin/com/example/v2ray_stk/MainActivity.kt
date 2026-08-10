@@ -13,7 +13,7 @@ import com.example.v2ray_stk.vpn.StatsProvider
 import com.example.v2ray_stk.vpn.V2rayVpnService
 import com.example.v2ray_stk.vpn.VpnState
 import com.example.v2ray_stk.vpn.VpnStatus
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -21,7 +21,7 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
 
     private val channelName = "com.v2ray.stk/vpn"
     private val eventChannelName = "com.v2ray.stk/vpn_status"

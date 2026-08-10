@@ -45,20 +45,15 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Biometric Lock / قفل بیومتریک'),
             subtitle: const Text('باز کردن اپ با اثر انگشت یا چهره'),
             value: settings.biometricLock,
-            onChanged: (bool v) {
-              Haptics.selection();
-              ref.read(appSettingsProvider.notifier).setBiometricLock(v);
-            },
+            onChanged: (bool v) =>
+                ref.read(appSettingsProvider.notifier).Haptics.selection(); setBiometricLock(v),
           ),
           SwitchListTile(
             secondary: const Icon(Icons.vibration),
             title: const Text('Haptic Feedback / بازخورد لمسی'),
             value: settings.hapticEnabled,
-            onChanged: (bool v) {
-              Haptics.enabled = v;
-              Haptics.selection();
-              ref.read(appSettingsProvider.notifier).setHaptic(v);
-            },
+            onChanged: (bool v) =>
+                ref.read(appSettingsProvider.notifier).Haptics.enabled = v; Haptics.selection(); setHaptic(v),
           ),
           ListTile(
             leading: const Icon(Icons.admin_panel_settings),

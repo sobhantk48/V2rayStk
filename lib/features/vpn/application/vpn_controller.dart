@@ -1,4 +1,3 @@
-import '../../profiles/domain/profile_type.dart';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,12 +6,12 @@ import '../../../core/platform/vpn_platform_service.dart';
 import '../../admin/domain/admin_settings.dart';
 import '../../profiles/application/profile_providers.dart';
 import '../../profiles/domain/profile.dart';
+import '../../profiles/domain/profile_type.dart';
 import '../../sing_box/application/admin_config_patcher.dart';
 import '../../sing_box/application/sing_box_config_generator.dart';
 import '../../sing_box/domain/sing_box_config.dart';
 import '../../sing_box/domain/sing_box_config_exception.dart';
 import 'admin_settings_reader.dart';
-import 'package:v2ray_stk/features/profiles/domain/profile_type.dart';
 
 enum VpnConnectionState {
   disconnected,

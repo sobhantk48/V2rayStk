@@ -91,7 +91,7 @@ class _NativeLogScreenState extends State<NativeLogScreen> {
                   setState(() => _onlyVpn = v);
                   _load();
                 },
-                activeColor: Colors.greenAccent,
+                activeThumbColor: Colors.greenAccent,
               ),
             ],
           ),

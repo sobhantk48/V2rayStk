@@ -23,7 +23,7 @@ class TorToggleNotifier extends StateNotifier<bool> {
       // مثلاً اگر یه پروایدر برای لیست پروفایل‌ها داری:
       // ref.read(profileListProvider.notifier).addProfiles(torProfiles);
       
-      debugPrint("✅ Tor profiles loaded: ${torProfiles.length}");
+      debugPrint('✅ Tor profiles loaded: ${torProfiles.length}');
 
       // 3. انتخاب بهترین پروفایل (مثلا Snowflake) و شروع اتصال
       final bestProfile = torProfiles.last; // همون snowflake
@@ -31,7 +31,7 @@ class TorToggleNotifier extends StateNotifier<bool> {
       
     } else {
       // پاک کردن پروفایل‌های تور از لیست و قطع اتصال
-      debugPrint("🚫 Tor disconnected and profiles hidden.");
+      debugPrint('🚫 Tor disconnected and profiles hidden.');
       // ref.read(profileListProvider.notifier).removeTorProfiles();
       _stopTorTunnel();
     }
@@ -40,7 +40,7 @@ class TorToggleNotifier extends StateNotifier<bool> {
   void _startTorTunnel(String bridgeLine, String bridgeType) {
     // اینجا متد چنل (MethodChannel) یا فراخوانی libbox رو قرار میدیم
     // باید به Kotlin بگی که فایل torrc رو با این Bridge بسازه
-    debugPrint("🚀 Starting Tunnel with Bridge: $bridgeLine");
+    debugPrint('🚀 Starting Tunnel with Bridge: $bridgeLine');
     
     /* مثال برای فراخوانی نیتیو:
     MethodChannel('com.example.v2ray_stk/vpn').invokeMethod('startTor', {

@@ -132,7 +132,10 @@ class AdminConfigPatcher {
       api['external_controller'] = '127.0.0.1:$port';
       experimental['clash_api'] = api;
     }
-    if (experimental.isEmpty) config.remove('experimental');
-    else config['experimental'] = experimental;
+    if (experimental.isEmpty) {
+      config.remove('experimental');
+    } else {
+      config['experimental'] = experimental;
+    }
   }
 }

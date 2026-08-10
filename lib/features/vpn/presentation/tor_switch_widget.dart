@@ -18,7 +18,7 @@ class TorSwitchWidget extends ConsumerWidget {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -27,15 +27,15 @@ class TorSwitchWidget extends ConsumerWidget {
       // ظاهر دکمه
       child: SwitchListTile(
         title: const Text(
-          "Tor Network",
+          'Tor Network',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: const Text(
-          "اتصال از طریق پل‌های ضدفیلتر",
+          'اتصال از طریق پل‌های ضدفیلتر',
           style: TextStyle(fontSize: 12),
         ),
         value: isTorOn,
-        activeColor: Colors.deepPurpleAccent,
+        activeThumbColor: Colors.deepPurpleAccent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         onChanged: (value) {
           // وقتی کاربر دکمه رو میزنه، دستورات روشن/خاموش شدن اجرا میشه
