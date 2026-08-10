@@ -298,6 +298,13 @@ class SingBoxConfigGenerator {
               'domain': <String>[proxyServer],
               'outbound': 'direct',
             },
+          // ۴) در حالت Tor هیچ UDP نداریم (SOCKS5 تور UDP ندارد).
+          //    پورت ۵۳ و loopback بالاتر هندل شده‌اند، پس DNS سالم می‌ماند.
+          if (isTor)
+            {
+              'network': 'udp',
+              'outbound': 'block',
+            },
         ],
         'final': 'proxy',
         'auto_detect_interface': true,
