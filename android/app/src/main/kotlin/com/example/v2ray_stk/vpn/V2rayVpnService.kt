@@ -25,6 +25,7 @@ class V2rayVpnService : VpnService() {
         const val EXTRA_TOR_ENABLED = "extra_tor_enabled"
 
         const val EXTRA_KILL_SWITCH = "extra_kill_switch"
+        const val EXTRA_ALWAYS_ON = "extra_always_on"
         private const val TAG = "V2rayVpnService"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "v2ray_stk_vpn"
@@ -93,22 +94,47 @@ class V2rayVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
+                // قطع دستی توسط کاربر: prefs پاک شود تا ریبوت باعث اتصال خودسر نشود
+                runCatching { VpnPrefs.clear(this) }
                 stopVpn()
                 return START_NOT_STICKY
             }
 
             else -> {
-                val config = intent?.getStringExtra(EXTRA_CONFIG).orEmpty()
-                val torEnabled = intent?.getBooleanExtra(EXTRA_TOR_ENABLED, false) ?: false
-                val killSwitch = intent?.getBooleanExtra(EXTRA_KILL_SWITCH, false) ?: false
-                startVpn(config, torEnabled, killSwitch)
+                // در حالت عادی از Intent می‌خوانیم؛ در استارت خودکار سیستم (ریبوت/Always-On)
+                // که intent == null است، از VpnPrefs بازیابی می‌کنیم.
+                var config = intent?.getStringExtra(EXTRA_CONFIG).orEmpty()
+                var torEnabled = intent?.getBooleanExtra(EXTRA_TOR_ENABLED, false) ?: false
+                var killSwitch = intent?.getBooleanExtra(EXTRA_KILL_SWITCH, false) ?: false
+                var alwaysOnVpn = intent?.getBooleanExtra(EXTRA_ALWAYS_ON, false) ?: false
+
+                if (intent == null || config.isBlank()) {
+                    Log.d(TAG, "Intent خالی/بدون کانفیگ — بازیابی از VpnPrefs")
+                    config = VpnPrefs.config(this)
+                    torEnabled = VpnPrefs.torEnabled(this)
+                    killSwitch = VpnPrefs.killSwitch(this)
+                    alwaysOnVpn = VpnPrefs.alwaysOnVpn(this)
+                } else {
+                    // اتصال معمولی از UI: همه چیز برای استارت‌های بعدی ذخیره شود
+                    runCatching {
+                        VpnPrefs.save(this, config, torEnabled, killSwitch, alwaysOnVpn)
+                    }
+                }
+
+                startVpn(config, torEnabled, killSwitch, alwaysOnVpn)
             }
         }
         return START_STICKY
     }
 
-    private fun startVpn(config: String, torEnabled: Boolean, killSwitch: Boolean = false) {
+    private fun startVpn(
+        config: String,
+        torEnabled: Boolean,
+        killSwitch: Boolean = false,
+        alwaysOnVpn: Boolean = false,
+    ) {
         stopping = false
+        currentAlwaysOn = alwaysOnVpn
         startForegroundSafely()
         VpnState.update(VpnStatus.CONNECTING)
 
@@ -219,6 +245,7 @@ class V2rayVpnService : VpnService() {
     }
 
     private var currentKillSwitch: Boolean = false
+    private var currentAlwaysOn: Boolean = false
 
     private fun establishTun(killSwitch: Boolean = false): ParcelFileDescriptor? {
         currentKillSwitch = killSwitch

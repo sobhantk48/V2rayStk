@@ -47,17 +47,17 @@ class VpnStatsController extends Notifier<VpnStats> {
     if (since == null) return;
     final Duration elapsed = DateTime.now().difference(since);
 
-    final Map<String, dynamic>? raw =
+    final Map<String, dynamic> raw =
         await ref.read(vpnPlatformServiceProvider).getStats();
 
-    state = raw == null
+    state = raw.isEmpty
         ? state.copyWith(duration: elapsed)
         : VpnStats.fromMap(raw, elapsed);
   }
 
   Future<void> refreshLatency() async {
-    final int? ping = await ref.read(vpnPlatformServiceProvider).testLatency();
-    if (ping != null && ping >= 0) {
+    final int ping = await ref.read(vpnPlatformServiceProvider).testLatency();
+    if (ping >= 0) {
       state = state.copyWith(pingMs: ping);
     }
   }

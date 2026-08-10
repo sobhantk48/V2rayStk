@@ -55,13 +55,14 @@ class VpnController extends Notifier<VpnConnectionState> {
   Future<void> connect() async {
     state = VpnConnectionState.connecting;
     try {
-      final AdminSettings settings = await _reader.read();
-      final Profile profile = await _resolveActiveProfile(settings);
+      final Profile profile = await _resolveActiveProfile();
+      final flags = await _readVpnFlags();
       await _service.connect(
-        _buildConfigJson(profile, settings),
-        torEnabled: settings.torEnabled,
-        killSwitch: settings.killSwitch,
-        alwaysOnVpn: settings.alwaysOnVpn,
+        await _buildConfigJson(profile),
+        torEnabled: await _isTorEnabled(),
+        killSwitch: await _isKillSwitchEnabled(),
+        killSwitch: flags.killSwitch,
+        alwaysOnVpn: flags.alwaysOnVpn,
       );
       state = VpnConnectionState.connected;
     } catch (_) {
@@ -81,15 +82,17 @@ class VpnController extends Notifier<VpnConnectionState> {
     }
   }
 
+  /// اتصال با یک پروفایل مشخص، بدون توجه به فلگ isActive.
   Future<void> connectWithProfile(Profile profile) async {
     state = VpnConnectionState.connecting;
     try {
-      final AdminSettings settings = await _reader.read();
+      final flags = await _readVpnFlags();
       await _service.connect(
-        _buildConfigJson(profile, settings),
-        torEnabled: settings.torEnabled,
-        killSwitch: settings.killSwitch,
-        alwaysOnVpn: settings.alwaysOnVpn,
+        await _buildConfigJson(profile),
+        torEnabled: await _isTorEnabled(),
+        killSwitch: await _isKillSwitchEnabled(),
+        killSwitch: flags.killSwitch,
+        alwaysOnVpn: flags.alwaysOnVpn,
       );
       state = VpnConnectionState.connected;
     } catch (_) {
@@ -98,8 +101,45 @@ class VpnController extends Notifier<VpnConnectionState> {
     }
   }
 
-  Future<Profile> _resolveActiveProfile(AdminSettings settings) async {
-    if (settings.torEnabled) {
+  /// فلگ Tor را از تنظیمات ادمین می‌خواند تا به سرویس نیتیو برسد.
+  /// اگر خواندن شکست بخورد false برمی‌گردد تا پورت ۹۰۵۰ بی‌دلیل اشغال نشود.
+  Future<bool> _isTorEnabled() async {
+    try {
+      final AdminSettings settings = await _reader.read();
+      return settings.torEnabled;
+    } catch (_) {
+      return false;
+    }
+
+  Future<bool> _isKillSwitchEnabled() async {
+    try {
+      final AdminSettings settings = await _reader.read();
+      return settings.killSwitch;
+    } catch (_) {
+      return false;
+    }
+  }
+  }
+
+  /// تنظیمات Kill Switch و Always-on VPN را از پنل ادمین می‌خواند.
+  Future<({bool killSwitch, bool alwaysOnVpn})> _readVpnFlags() async {
+    try {
+      final AdminSettings settings = await _reader.read();
+      return (
+        killSwitch: settings.killSwitch,
+        alwaysOnVpn: settings.alwaysOnVpn,
+      );
+    } catch (_) {
+      return (killSwitch: false, alwaysOnVpn: false);
+    }
+  }
+
+  Future<Profile> _resolveActiveProfile() async {
+    // TOR-ONLY PRIORITY
+    final adminReader = ref.read(adminSettingsReaderProvider);
+    final adminSettings = await adminReader.read();
+
+    if (adminSettings.torEnabled) {
       return Profile(
         id: 'tor_standalone_auto',
         name: 'Tor Direct Network',
@@ -114,22 +154,35 @@ class VpnController extends Notifier<VpnConnectionState> {
 
     final List<Profile> profiles = await ref.read(profilesProvider.future);
     if (profiles.isNotEmpty) {
-      final List<Profile> active =
-          profiles.where((Profile p) => p.isActive).toList();
+      final active = profiles.where((p) => p.isActive).toList();
       return active.isNotEmpty ? active.first : profiles.first;
     }
 
     throw const SingBoxConfigException(
-      'No profile selected. Add a config or enable Tor from the admin panel.',
+      'هیچ پروفایلی انتخاب نشده است. یک کانفیگ اضافه کنید یا Tor را از پنل ادمین فعال کنید.',
     );
   }
 
-  String _buildConfigJson(Profile profile, AdminSettings settings) {
+  /// کانفیگ پروفایل را می‌سازد و تنظیمات پنل ادمین را روی آن اعمال می‌کند.
+  Future<String> _buildConfigJson(Profile profile) async {
     final SingBoxConfig config = _generator.generate(profile);
-    final Map<String, dynamic> patched = _patcher.apply(
-      config.value,
-      settings,
-    );
-    return jsonEncode(patched);
+    final String rawJson = config.toJsonString();
+
+    try {
+      final AdminSettings settings = await _reader.read();
+      final dynamic decoded = jsonDecode(rawJson);
+      if (decoded is! Map) {
+        return rawJson;
+      }
+      final Map<String, dynamic> patched = _patcher.apply(
+        Map<String, dynamic>.from(decoded),
+        settings,
+      );
+      return jsonEncode(patched);
+    } catch (_) {
+      // اگر اعمال تنظیمات به هر دلیلی شکست خورد، اتصال با کانفیگ خام
+      // ادامه پیدا می‌کند تا کاربر بی‌اینترنت نماند.
+      return rawJson;
+    }
   }
 }
