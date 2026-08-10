@@ -256,8 +256,11 @@ class SingBoxConfigGenerator {
           'stack': 'system',
           'endpoint_independent_nat': true,
           'sniff': true,
-          'sniff_override_destination': false,
-          'domain_strategy': 'ipv4_only',
+            // در حالت Tor دامنه‌ی sniff‌شده باید جایگزین مقصد شود تا نام دامنه
+            // (نه IP خام) به SOCKS تور تحویل داده شود.
+            'sniff_override_destination': isTor,
+            // در حالت Tor دامنه نباید محلی resolve شود؛ حل نام کار خود تور است.
+            if (!isTor) 'domain_strategy': 'ipv4_only',
         }
       ],
       'outbounds': [
