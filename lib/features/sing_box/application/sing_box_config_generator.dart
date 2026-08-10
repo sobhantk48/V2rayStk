@@ -43,6 +43,9 @@ class SingBoxConfigGenerator {
     const tag = 'proxy';
 
     switch (profile.type) {
+      case ProfileType.tor:
+        // Tor داخلی یک SOCKS محلی روی 9050 است -> مثل SOCKS ساخته می‌شود.
+        return _buildSocksOutbound(uri, params, tag);
       case ProfileType.socks:
         return _buildSocksOutbound(uri, params, tag);
       case ProfileType.vless:
@@ -75,7 +78,8 @@ class SingBoxConfigGenerator {
       'tag': tag,
       'server': uri.host,
       'server_port': uri.port,
-      'uuid': uuid};
+      'uuid': uuid
+    };
 
     // flow فقط وقتی اضافه شود که واقعا مقدار دارد (خالی باعث خطا می‌شود)
     if (flow.isNotEmpty) {
@@ -90,28 +94,23 @@ class SingBoxConfigGenerator {
       outbound['tls'] = {
         'enabled': true,
         'server_name': sni,
-        'utls': {
-          'enabled': true,
-          'fingerprint': fp},
-        'reality': {
-          'enabled': true,
-          'public_key': pbk,
-          'short_id': sid}
+        'utls': {'enabled': true, 'fingerprint': fp},
+        'reality': {'enabled': true, 'public_key': pbk, 'short_id': sid}
       };
     } else if (security == 'tls') {
       outbound['tls'] = {
         'enabled': true,
         'server_name': sni,
-        'utls': {
-          'enabled': true,
-          'fingerprint': fp}};
+        'utls': {'enabled': true, 'fingerprint': fp}
+      };
     }
 
     _addTransport(outbound, params);
     return outbound;
   }
 
-  void _addTransport(Map<String, dynamic> outbound, Map<String, String> params) {
+  void _addTransport(
+      Map<String, dynamic> outbound, Map<String, String> params) {
     final String type = (params['type'] ?? '').toLowerCase();
     if (type.isEmpty || type == 'tcp' || type == 'raw' || type == 'none') {
       return; // ترنسپورت خام؛ چیزی اضافه نمی‌شود
@@ -213,9 +212,8 @@ class SingBoxConfigGenerator {
       'tls': {
         'enabled': true,
         'server_name': params['sni'] ?? params['host'] ?? '',
-        'utls': {
-          'enabled': true,
-          'fingerprint': params['fp'] ?? 'chrome'}}
+        'utls': {'enabled': true, 'fingerprint': params['fp'] ?? 'chrome'}
+      }
     };
   }
 
@@ -227,11 +225,15 @@ class SingBoxConfigGenerator {
       'server': uri.host,
       'server_port': uri.port,
       'method': 'aes-256-gcm',
-      'password': uri.userInfo};
+      'password': uri.userInfo
+    };
   }
 
   Map<String, dynamic> _wrap(Map<String, dynamic> outbound,
       {bool isTor = false}) {
+    final Object? srv = outbound['server'];
+    final String proxyServer = srv is String ? srv.trim() : '';
+
     return {
       'log': {'level': 'info', 'timestamp': true},
       'experimental': {
@@ -241,19 +243,20 @@ class SingBoxConfigGenerator {
         },
         'cache_file': {'enabled': true},
       },
-      'dns': _buildDns(isTor),
+      'dns': _buildDns(isTor, proxyServer),
       'inbounds': [
         {
           'type': 'tun',
           'tag': 'tun-in',
           'interface_name': 'tun0',
           'inet4_address': '172.19.0.1/28',
+          'mtu': 9000,
           'auto_route': true,
-          'strict_route': true,
-          'stack': 'gvisor',
+          'strict_route': false,
+          'stack': 'system',
           'endpoint_independent_nat': true,
           'sniff': true,
-          'sniff_override_destination': true,
+          'sniff_override_destination': false,
           'domain_strategy': 'ipv4_only',
         }
       ],
@@ -264,9 +267,37 @@ class SingBoxConfigGenerator {
         {'type': 'dns', 'tag': 'dns-out'}
       ],
       'route': {
-        'rules': [
+        'rules': <Map<String, dynamic>>[
+          // ۱) هر چیزی که DNS است -> hijack به dns-out
           {'protocol': 'dns', 'outbound': 'dns-out'},
-          {'port': [53], 'outbound': 'dns-out'},
+          {
+            'port': <int>[53],
+            'outbound': 'dns-out'
+          },
+          // ۲) لوکال‌هاست و شبکه‌های خصوصی هرگز نباید وارد تونل شوند
+          {
+            'ip_cidr': <String>[
+              '127.0.0.0/8',
+              '10.0.0.0/8',
+              '172.16.0.0/12',
+              '192.168.0.0/16',
+              '169.254.0.0/16',
+              '::1/128',
+              'fc00::/7',
+              'fe80::/10',
+            ],
+            'outbound': 'direct',
+          },
+          {
+            'domain': <String>['localhost'],
+            'outbound': 'direct',
+          },
+          // ۳) خودِ سرور پروکسی نباید از داخل تونل عبور کند
+          if (proxyServer.isNotEmpty)
+            {
+              'domain': <String>[proxyServer],
+              'outbound': 'direct',
+            },
         ],
         'final': 'proxy',
         'auto_detect_interface': true,
@@ -276,6 +307,8 @@ class SingBoxConfigGenerator {
 
   /// تشخیص پروفایل تور: SOCKS روی لوکال‌هاست
   bool _isTorProfile(Profile profile) {
+    // پروفایل صریحاً از نوع tor باشد -> همیشه حالت Tor
+    if (profile.type == ProfileType.tor) return true;
     if (profile.type != ProfileType.socks) return false;
     try {
       final uri = Uri.parse(profile.rawConfig.trim());
@@ -286,34 +319,68 @@ class SingBoxConfigGenerator {
     }
   }
 
-  /// DNS داینامیک: تور از DNSPort محلی (direct)، بقیه از DNS راه‌دور (proxy)
-  Map<String, dynamic> _buildDns(bool isTor) {
-    final List<Map<String, dynamic>> servers = isTor
-        ? <Map<String, dynamic>>[
-            {
-              'tag': 'proxy-dns',
-              'address': 'udp://127.0.0.1:5353',
-              'detour': 'direct',
-            },
-            {'tag': 'block-dns', 'address': 'rcode://success'},
-          ]
-        : <Map<String, dynamic>>[
-            {
-              'tag': 'proxy-dns',
-              'address': 'tcp://1.1.1.1',
-              'detour': 'proxy',
-            },
-            {'tag': 'block-dns', 'address': 'rcode://success'},
-          ];
+  /// DNS بدون حلقه:
+  ///  - bootstrap-dns : مستقیم (direct) برای حل دامنه‌ی سرور پروکسی
+  ///  - proxy-dns     : تور -> DNSPort محلی 5353 ، غیرتور -> DoH از داخل تونل
+  Map<String, dynamic> _buildDns(bool isTor, String proxyServer) {
+    final List<Map<String, dynamic>> servers = <Map<String, dynamic>>[
+      // همیشه یک resolver مستقیم داریم تا آدرس سرور بدون تونل حل شود
+      {
+        'tag': 'bootstrap-dns',
+        'address': '8.8.8.8',
+        'detour': 'direct',
+      },
+      if (isTor)
+        {
+          'tag': 'proxy-dns',
+          'address': 'udp://127.0.0.1:5353',
+          'detour': 'direct',
+        }
+      else
+        {
+          'tag': 'proxy-dns',
+          'address': 'https://1.1.1.1/dns-query',
+          'address_resolver': 'bootstrap-dns',
+          'strategy': 'ipv4_only',
+          'detour': 'proxy',
+        },
+      {'tag': 'block-dns', 'address': 'rcode://success'},
+    ];
+
+    final List<Map<String, dynamic>> rules = <Map<String, dynamic>>[
+      // دامنه‌ی سرور پروکسی حتماً باید با bootstrap حل شود (جلوگیری از حلقه)
+      if (proxyServer.isNotEmpty && !_isIpLiteral(proxyServer))
+        {
+          'domain': <String>[proxyServer],
+          'server': 'bootstrap-dns',
+        },
+      {
+        'domain_suffix': <String>['.local', '.lan', '.home'],
+        'server': 'bootstrap-dns',
+      },
+    ];
 
     return <String, dynamic>{
       'servers': servers,
-      'rules': <Map<String, dynamic>>[],
+      'rules': rules,
       'final': 'proxy-dns',
       'strategy': 'ipv4_only',
       'independent_cache': true,
       'disable_cache': false,
+      'reverse_mapping': true,
     };
+  }
+
+  /// آیا رشته یک IP خام است؟ (برای IP نیازی به DNS rule نیست)
+  bool _isIpLiteral(String host) {
+    if (host.contains(':')) return true; // IPv6
+    final parts = host.split('.');
+    if (parts.length != 4) return false;
+    for (final p in parts) {
+      final n = int.tryParse(p);
+      if (n == null || n < 0 || n > 255) return false;
+    }
+    return true;
   }
 
   Map<String, dynamic> _buildSocksOutbound(
@@ -494,6 +561,4 @@ class SingBoxConfigGenerator {
     }
     return json;
   }
-
-
 }
