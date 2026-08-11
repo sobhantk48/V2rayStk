@@ -43,6 +43,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         LogChannel.register(flutterEngine)
+        com.example.v2ray_stk.vpn.LogChannel.register(flutterEngine)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->

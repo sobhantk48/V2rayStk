@@ -87,3 +87,7 @@ patch_*.py
 *.bak_tornedeed
 V2rayStk_source_new.zip
 *_source_new.zip
+
+# backups
+*.bak_*
+*.removed
