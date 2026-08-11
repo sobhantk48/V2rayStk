@@ -217,6 +217,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           value: s.splitDns,
           onChanged: (bool v) => _update(s.copyWith(splitDns: v)),
         ),
+        _textTile(
+          title: strings.splitDnsDirectDomains,
+          value: s.splitDnsDirectDomains,
+          onSaved: (String v) => _update(s.copyWith(splitDnsDirectDomains: v)),
+        ),
+        _textTile(
+          title: strings.splitDnsLocalServer,
+          value: s.splitDnsLocalServer,
+          onSaved: (String v) => _update(s.copyWith(splitDnsLocalServer: v)),
+        ),
         const Divider(),
         _header(strings.sectionFragment),
         SwitchListTile(

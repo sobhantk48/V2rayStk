@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  FLUTTER_VERSION: "3.35.5"
+  FLUTTER_VERSION: "3.44.9"
 
 permissions:
   contents: write
@@ -55,6 +55,9 @@ jobs:
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos || true
+
+      - name: Run unit tests
+        run: flutter test --reporter compact
 
       # مهم: --split-per-abi استفاده نمی‌شود.
       # ABIها در android/app/build.gradle با ndk.abiFilters قفل شده‌اند

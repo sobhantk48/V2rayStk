@@ -115,6 +115,16 @@ class Strings {
   String get splitDnsHint => fa
       ? 'DNS جداگانه برای دامنه‌های داخلی و خارجی'
       : 'Separate DNS for local and remote domains';
+  String get splitDnsDirectDomains =>
+      fa ? 'دامنه‌های مستقیم (Split DNS)' : 'Direct domains (Split DNS)';
+  String get splitDnsLocalServer =>
+      fa ? 'سرور DNS محلی' : 'Local DNS server';
+  String get splitDnsDirectDomainsHint => fa
+      ? 'با کاما جدا کنید، مثال: ir,digikala.com'
+      : 'Comma separated, e.g. ir,digikala.com';
+  String get splitDnsLocalServerHint => fa
+      ? 'مثال: 8.8.8.8 یا https://dns.google/dns-query'
+      : 'e.g. 8.8.8.8 or https://dns.google/dns-query';
 
   String get fragmentEnabled => fa ? 'فعال‌سازی فرگمنت' : 'Enable fragment';
   String get fragmentPackets => fa ? 'بسته‌ها' : 'Packets';

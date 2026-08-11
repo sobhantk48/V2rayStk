@@ -23,6 +23,8 @@ class AdminSettings {
     this.dnsMode = 'doh',
     this.dnsServer = 'https://cloudflare-dns.com/dns-query',
     this.splitDns = false,
+    this.splitDnsDirectDomains = 'ir',
+    this.splitDnsLocalServer = 'local',
     this.fragmentEnabled = false,
     this.fragmentPackets = 'tlshello',
     this.fragmentLength = '10-20',
@@ -62,6 +64,12 @@ class AdminSettings {
   final String dnsMode;
   final String dnsServer;
   final bool splitDns;
+
+  /// دامنه‌هایی که باید با DNS محلی حل شوند (با کاما جدا).
+  final String splitDnsDirectDomains;
+
+  /// سرور DNS محلی برای دامنه‌های داخلی؛ 'local' = DNS سیستم.
+  final String splitDnsLocalServer;
 
   final bool fragmentEnabled;
   final String fragmentPackets;
@@ -103,6 +111,8 @@ class AdminSettings {
     String? dnsMode,
     String? dnsServer,
     bool? splitDns,
+    String? splitDnsDirectDomains,
+    String? splitDnsLocalServer,
     bool? fragmentEnabled,
     String? fragmentPackets,
     String? fragmentLength,
@@ -140,6 +150,10 @@ class AdminSettings {
       dnsMode: dnsMode ?? this.dnsMode,
       dnsServer: dnsServer ?? this.dnsServer,
       splitDns: splitDns ?? this.splitDns,
+      splitDnsDirectDomains:
+          splitDnsDirectDomains ?? this.splitDnsDirectDomains,
+      splitDnsLocalServer:
+          splitDnsLocalServer ?? this.splitDnsLocalServer,
       fragmentEnabled: fragmentEnabled ?? this.fragmentEnabled,
       fragmentPackets: fragmentPackets ?? this.fragmentPackets,
       fragmentLength: fragmentLength ?? this.fragmentLength,
@@ -180,6 +194,8 @@ class AdminSettings {
         'dnsMode': dnsMode,
         'dnsServer': dnsServer,
         'splitDns': splitDns,
+        'splitDnsDirectDomains': splitDnsDirectDomains,
+        'splitDnsLocalServer': splitDnsLocalServer,
         'fragmentEnabled': fragmentEnabled,
         'fragmentPackets': fragmentPackets,
         'fragmentLength': fragmentLength,
@@ -240,6 +256,8 @@ class AdminSettings {
       dnsMode: stringOf('dnsMode', 'doh'),
       dnsServer: stringOf('dnsServer', 'https://cloudflare-dns.com/dns-query'),
       splitDns: boolOf('splitDns', false),
+      splitDnsDirectDomains: stringOf('splitDnsDirectDomains', 'ir'),
+      splitDnsLocalServer: stringOf('splitDnsLocalServer', 'local'),
       fragmentEnabled: boolOf('fragmentEnabled', false),
       fragmentPackets: stringOf('fragmentPackets', 'tlshello'),
       fragmentLength: stringOf('fragmentLength', '10-20'),
