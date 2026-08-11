@@ -43,7 +43,7 @@ class TorToggleNotifier extends StateNotifier<bool> {
     debugPrint('🚀 Starting Tunnel with Bridge: $bridgeLine');
     
     /* مثال برای فراخوانی نیتیو:
-    MethodChannel('com.example.v2ray_stk/vpn').invokeMethod('startTor', {
+    MethodChannel('com.v2ray.stk/vpn').invokeMethod('startTor', {
       'bridge': bridgeLine,
       'type': bridgeType,
     });
@@ -53,7 +53,7 @@ class TorToggleNotifier extends StateNotifier<bool> {
   void _stopTorTunnel() {
     // قطع کردن اتصال
     /*
-    MethodChannel('com.example.v2ray_stk/vpn').invokeMethod('stopTor');
+    MethodChannel('com.v2ray.stk/vpn').invokeMethod('stopTor');
     */
   }
 }

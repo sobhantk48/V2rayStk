@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 
 class VpnPlatformService {
   static const MethodChannel _channel =
-      MethodChannel('com.example.v2ray_stk/vpn');
+      MethodChannel('com.v2ray.stk/vpn');
 
   Future<String> getStatus() async {
     final String? status = await _channel.invokeMethod<String>('getStatus');
