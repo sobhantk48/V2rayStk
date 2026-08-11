@@ -91,3 +91,17 @@ V2rayStk_source_new.zip
 # backups
 *.bak_*
 *.removed
+
+# --- cleanup rules ---
+build/
+.dart_tool/
+.trash_bak/
+tools/
+*.bak
+*.bak2
+*.bak_*
+*.orig
+*.rej
+*.removed
+V2rayStk_source_new*.zip
+cleanup_project.py
