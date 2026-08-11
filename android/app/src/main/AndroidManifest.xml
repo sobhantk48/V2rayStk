@@ -44,11 +44,13 @@
             android:name=".vpn.V2rayVpnService"
             android:exported="false"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="specialUse"
-            android:supportsAlwaysOnVpn="true">
+            android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="VPN tunnel via sing-box core" />
+            <meta-data
+                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+                android:value="true" />
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
