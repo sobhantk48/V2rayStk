@@ -52,4 +52,30 @@ class VpnPlatformService {
     );
     return result ?? -1;
   }
+
+  // SPLIT_BRIDGE_V1
+  Future<List<Map<String, dynamic>>> getInstalledApps() async {
+    final List<dynamic>? apps =
+        await _channel.invokeMethod<List<dynamic>>('getInstalledApps');
+    if (apps == null) return <Map<String, dynamic>>[];
+    return apps
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  Future<void> setSplitTunnel(String mode, List<String> apps) async {
+    await _channel.invokeMethod<void>(
+      'setSplitTunnel',
+      <String, dynamic>{'mode': mode, 'apps': apps},
+    );
+  }
+
+  Future<Map<String, dynamic>> getSplitTunnel() async {
+    final Map<dynamic, dynamic>? data = await _channel
+        .invokeMethod<Map<dynamic, dynamic>>('getSplitTunnel');
+    if (data == null) {
+      return <String, dynamic>{'mode': 'off', 'apps': <String>[]};
+    }
+    return data.map((k, v) => MapEntry(k.toString(), v));
+  }
 }

@@ -42,8 +42,13 @@ object VpnPrefs {
     }
 
     /** پس از قطع دستی توسط کاربر صدا زده می‌شود تا ریبوت باعث اتصال خودسر نشود. */
+        // SPLIT_PATCH_V2: keep split-tunnel settings when user disconnects
     fun clear(context: Context) {
-        prefs(context).edit().clear().apply()
+        val p = prefs(context)
+        val mode = p.getString(KEY_SPLIT_MODE, SPLIT_OFF) ?: SPLIT_OFF
+        val apps = p.getStringSet(KEY_SPLIT_APPS, emptySet())?.toSet() ?: emptySet()
+        p.edit().clear().apply()
+        saveSplit(context, mode, apps)
     }
 
     fun config(context: Context): String =

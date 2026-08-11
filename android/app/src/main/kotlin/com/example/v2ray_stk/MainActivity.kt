@@ -312,4 +312,5 @@ class MainActivity : FlutterFragmentActivity() {
             pendingAlwaysOnVpn = false
         }
     }
+
 }

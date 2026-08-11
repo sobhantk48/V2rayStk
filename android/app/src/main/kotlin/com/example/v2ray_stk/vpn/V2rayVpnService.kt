@@ -247,7 +247,8 @@ class V2rayVpnService : VpnService() {
     private var currentKillSwitch: Boolean = false
     private var currentAlwaysOn: Boolean = false
 
-    private fun establishTun(killSwitch: Boolean = false): ParcelFileDescriptor? {
+        private fun establishTun(killSwitch: Boolean = false): ParcelFileDescriptor? {
+        // SPLIT_PATCH_V2
         currentKillSwitch = killSwitch
         val builder = Builder()
             .setSession("V2ray Stk")
@@ -260,18 +261,12 @@ class V2rayVpnService : VpnService() {
             builder.setMetered(false)
         }
 
-        if (Build.VERSION.SDK_INT >= 21) {
-            builder.allowFamily(android.system.OsConstants.AF_INET)
-        }
+        builder.allowFamily(android.system.OsConstants.AF_INET)
 
-        // Kill Switch: اگر فعال باشد ترافیک خارج از تونل مسدود می‌شود
-        if (killSwitch && Build.VERSION.SDK_INT >= 21) {
+        if (killSwitch) {
             builder.setBlocking(true)
-            Log.i(TAG, "Kill Switch فعال است — ترافیک خارج از VPN مسدود شد")
+            Log.i(TAG, "KillSwitch enabled: blocking mode ON")
         }
-
-        // ترافیک خود اپ (و پروسه tor) از تونل خارج می‌ماند تا حلقه ایجاد نشود
-        runCatching { builder.addDisallowedApplication(packageName) }
 
         applySplitTunnel(builder)
 
@@ -288,39 +283,38 @@ class V2rayVpnService : VpnService() {
      * و چون پکیج خودمان بالاتر با addDisallowedApplication ثبت شده، در حالت include
      * ابتدا Builder از نو ساخته نمی‌شود بلکه پکیج خودمان از لیست allowed کنار گذاشته می‌شود.
      */
-    private fun applySplitTunnel(builder: Builder) {
+        private fun applySplitTunnel(builder: Builder) {
+        // SPLIT_PATCH_V2
+        // Android forbids mixing addAllowedApplication with addDisallowedApplication.
+        // In INCLUDE mode we simply never add our own package to the allowed list.
         val mode = runCatching { VpnPrefs.splitMode(this) }.getOrDefault(VpnPrefs.SPLIT_OFF)
         val apps = runCatching { VpnPrefs.splitApps(this) }.getOrDefault(emptySet())
 
-        if (mode == VpnPrefs.SPLIT_OFF || apps.isEmpty()) {
-            Log.d(TAG, "Split Tunneling غیرفعال (mode=$mode apps=${apps.size})")
+        if (mode == VpnPrefs.SPLIT_INCLUDE && apps.isNotEmpty()) {
+            var ok = 0
+            for (pkg in apps) {
+                if (pkg == packageName) continue
+                runCatching { builder.addAllowedApplication(pkg) }
+                    .onSuccess { ok++ }
+                    .onFailure { e -> Log.w(TAG, "allow failed for " + pkg + ": " + e.message) }
+            }
+            Log.i(TAG, "SplitTunnel INCLUDE applied to " + ok + " app(s)")
             return
         }
 
-        var applied = 0
-        when (mode) {
-            VpnPrefs.SPLIT_EXCLUDE -> {
-                for (pkg in apps) {
-                    if (pkg == packageName) continue
-                    runCatching { builder.addDisallowedApplication(pkg) }
-                        .onSuccess { applied++ }
-                        .onFailure { Log.w(TAG, "exclude ناموفق برای $pkg: ${it.message}") }
-                }
-                Log.i(TAG, "Split Tunneling [exclude] روی $applied اپ اعمال شد")
-            }
+        runCatching { builder.addDisallowedApplication(packageName) }
 
-            VpnPrefs.SPLIT_INCLUDE -> {
-                for (pkg in apps) {
-                    if (pkg == packageName) continue
-                    runCatching { builder.addAllowedApplication(pkg) }
-                        .onSuccess { applied++ }
-                        .onFailure { Log.w(TAG, "include ناموفق برای $pkg: ${it.message}") }
-                }
-                if (applied == 0) {
-                    Log.w(TAG, "هیچ اپی برای include اعمال نشد — تونل عملاً خالی می‌ماند")
-                }
-                Log.i(TAG, "Split Tunneling [include] روی $applied اپ اعمال شد")
+        if (mode == VpnPrefs.SPLIT_EXCLUDE && apps.isNotEmpty()) {
+            var ok = 0
+            for (pkg in apps) {
+                if (pkg == packageName) continue
+                runCatching { builder.addDisallowedApplication(pkg) }
+                    .onSuccess { ok++ }
+                    .onFailure { e -> Log.w(TAG, "disallow failed for " + pkg + ": " + e.message) }
             }
+            Log.i(TAG, "SplitTunnel EXCLUDE applied to " + ok + " app(s)")
+        } else {
+            Log.d(TAG, "SplitTunnel OFF (mode=" + mode + " apps=" + apps.size + ")")
         }
     }
 
