@@ -61,6 +61,13 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.call_split, color: Colors.tealAccent),
+            title: const Text('Split Tunneling / تونل تفکیکی'),
+            subtitle: const Text('انتخاب اپ‌های داخل یا خارج از VPN'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/split-tunnel'),
+          ),
+          ListTile(
             leading: const Icon(Icons.admin_panel_settings),
             title: Text('${strings.adminPanel} / Admin Panel'),
             subtitle: const Text('تنظیمات پیشرفته و رمز عبور'),

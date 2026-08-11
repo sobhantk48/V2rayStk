@@ -2,6 +2,12 @@ package com.example.v2ray_stk
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -17,6 +23,8 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import com.example.v2ray_stk.vpn.VpnPrefs
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -77,6 +85,25 @@ class MainActivity : FlutterFragmentActivity() {
                     "getStats" -> result.success(buildStatsMap())
 
                     "testLatency" -> measureLatency(result)
+
+                    "getInstalledApps" -> loadInstalledApps(
+                        call.argument<Boolean>("withIcons") ?: true,
+                        result,
+                    )
+
+                    "setSplitTunnel" -> {
+                        val mode = call.argument<String>("mode") ?: "off"
+                        val apps = call.argument<List<String>>("apps") ?: emptyList()
+                        runCatching { VpnPrefs.saveSplit(this, mode, apps) }
+                        result.success(true)
+                    }
+
+                    "getSplitTunnel" -> result.success(
+                        mapOf(
+                            "mode" to VpnPrefs.splitMode(this),
+                            "apps" to VpnPrefs.splitApps(this).toList(),
+                        )
+                    )
 
                     else -> result.notImplemented()
                 }
@@ -195,6 +222,80 @@ class MainActivity : FlutterFragmentActivity() {
         startService(Intent(this, V2rayVpnService::class.java).apply {
             action = V2rayVpnService.ACTION_DISCONNECT
         })
+    }
+
+    // -------------------------------------------------- split tunneling
+
+    /**
+     * لیست اپ‌های نصب‌شده‌ای که مجوز INTERNET دارند.
+     * آیکون به‌صورت PNG/Base64-free (ByteArray) به فلاتر می‌رود تا مستقیم در Image.memory بنشیند.
+     */
+    private fun loadInstalledApps(withIcons: Boolean, result: MethodChannel.Result) {
+        Thread {
+            val out = ArrayList<Map<String, Any?>>()
+            try {
+                val pm = packageManager
+                val flags = PackageManager.GET_META_DATA
+                val apps: List<ApplicationInfo> = pm.getInstalledApplications(flags)
+                for (info in apps) {
+                    val pkg = info.packageName ?: continue
+                    if (pkg == packageName) continue
+                    val hasNet = pm.checkPermission(
+                        android.Manifest.permission.INTERNET, pkg
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (!hasNet) continue
+
+                    val label = runCatching { pm.getApplicationLabel(info).toString() }
+                        .getOrDefault(pkg)
+                    val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+
+                    var iconBytes: ByteArray? = null
+                    if (withIcons) {
+                        iconBytes = runCatching {
+                            drawableToPng(pm.getApplicationIcon(info))
+                        }.getOrNull()
+                    }
+
+                    out.add(
+                        mapOf(
+                            "packageName" to pkg,
+                            "name" to label,
+                            "isSystem" to isSystem,
+                            "icon" to iconBytes,
+                        )
+                    )
+                }
+                out.sortWith(compareBy({ it["isSystem"] as Boolean }, {
+                    (it["name"] as String).lowercase()
+                }))
+            } catch (t: Throwable) {
+                mainHandler.post {
+                    result.error("APP_LIST_FAILED", t.message, null)
+                }
+                return@Thread
+            }
+            mainHandler.post { result.success(out) }
+        }.apply { isDaemon = true }.start()
+    }
+
+    /** تبدیل Drawable آیکون اپ به بایت‌های PNG با ابعاد حداکثر 96px */
+    private fun drawableToPng(drawable: Drawable): ByteArray? {
+        val size = 96
+        val bitmap: Bitmap = if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            Bitmap.createScaledBitmap(drawable.bitmap, size, size, true)
+        } else {
+            val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(canvas)
+            bmp
+        }
+        val stream = ByteArrayOutputStream()
+        return if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+            stream.toByteArray()
+        } else {
+            null
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

@@ -10,6 +10,7 @@ import '../features/profiles/presentation/profiles_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/speedtest/presentation/speed_test_screen.dart';
 import '../features/stats/presentation/stats_screen.dart';
+import '../features/split_tunnel/presentation/split_tunnel_screen.dart';
 import '../features/subscriptions/presentation/subscriptions_screen.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -61,6 +62,12 @@ final GoRouter appRouter = GoRouter(
       path: '/logs',
       builder: (BuildContext context, GoRouterState state) {
         return const NativeLogScreen();
+      },
+    ),
+    GoRoute(
+      path: '/split-tunnel',
+      builder: (BuildContext context, GoRouterState state) {
+        return const SplitTunnelScreen();
       },
     ),
     GoRoute(

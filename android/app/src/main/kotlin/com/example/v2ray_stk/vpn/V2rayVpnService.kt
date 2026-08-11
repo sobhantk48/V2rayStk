@@ -273,7 +273,55 @@ class V2rayVpnService : VpnService() {
         // ترافیک خود اپ (و پروسه tor) از تونل خارج می‌ماند تا حلقه ایجاد نشود
         runCatching { builder.addDisallowedApplication(packageName) }
 
+        applySplitTunnel(builder)
+
         return builder.establish()
+    }
+
+    /**
+     * Split Tunneling — اعمال لیست اپ‌ها روی VpnService.Builder
+     *
+     * exclude: اپ‌های انتخاب‌شده از تونل خارج می‌مانند (بقیه داخل تونل)
+     * include: فقط اپ‌های انتخاب‌شده داخل تونل می‌روند (بقیه مستقیم)
+     *
+     * نکته: اندروید اجازه نمی‌دهد هر دو متد addAllowed/addDisallowed با هم استفاده شوند،
+     * و چون پکیج خودمان بالاتر با addDisallowedApplication ثبت شده، در حالت include
+     * ابتدا Builder از نو ساخته نمی‌شود بلکه پکیج خودمان از لیست allowed کنار گذاشته می‌شود.
+     */
+    private fun applySplitTunnel(builder: Builder) {
+        val mode = runCatching { VpnPrefs.splitMode(this) }.getOrDefault(VpnPrefs.SPLIT_OFF)
+        val apps = runCatching { VpnPrefs.splitApps(this) }.getOrDefault(emptySet())
+
+        if (mode == VpnPrefs.SPLIT_OFF || apps.isEmpty()) {
+            Log.d(TAG, "Split Tunneling غیرفعال (mode=$mode apps=${apps.size})")
+            return
+        }
+
+        var applied = 0
+        when (mode) {
+            VpnPrefs.SPLIT_EXCLUDE -> {
+                for (pkg in apps) {
+                    if (pkg == packageName) continue
+                    runCatching { builder.addDisallowedApplication(pkg) }
+                        .onSuccess { applied++ }
+                        .onFailure { Log.w(TAG, "exclude ناموفق برای $pkg: ${it.message}") }
+                }
+                Log.i(TAG, "Split Tunneling [exclude] روی $applied اپ اعمال شد")
+            }
+
+            VpnPrefs.SPLIT_INCLUDE -> {
+                for (pkg in apps) {
+                    if (pkg == packageName) continue
+                    runCatching { builder.addAllowedApplication(pkg) }
+                        .onSuccess { applied++ }
+                        .onFailure { Log.w(TAG, "include ناموفق برای $pkg: ${it.message}") }
+                }
+                if (applied == 0) {
+                    Log.w(TAG, "هیچ اپی برای include اعمال نشد — تونل عملاً خالی می‌ماند")
+                }
+                Log.i(TAG, "Split Tunneling [include] روی $applied اپ اعمال شد")
+            }
+        }
     }
 
     private fun stopVpn() {

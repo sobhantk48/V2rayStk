@@ -15,6 +15,13 @@ object VpnPrefs {
     private const val KEY_TOR_ENABLED = "tor_enabled"
     private const val KEY_KILL_SWITCH = "kill_switch"
     private const val KEY_ALWAYS_ON = "always_on"
+    private const val KEY_SPLIT_MODE = "split_mode"
+    private const val KEY_SPLIT_APPS = "split_apps"
+
+    /** حالت‌های مجاز تونل تفکیکی */
+    const val SPLIT_OFF = "off"
+    const val SPLIT_EXCLUDE = "exclude"
+    const val SPLIT_INCLUDE = "include"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -50,4 +57,24 @@ object VpnPrefs {
 
     fun alwaysOnVpn(context: Context): Boolean =
         prefs(context).getBoolean(KEY_ALWAYS_ON, false)
+
+    // ----------------------------------------------------- split tunneling
+
+    /** ذخیره‌ی حالت و لیست پکیج‌ها؛ از سمت Flutter صدا زده می‌شود. */
+    fun saveSplit(context: Context, mode: String, apps: Collection<String>) {
+        val safeMode = when (mode) {
+            SPLIT_EXCLUDE, SPLIT_INCLUDE -> mode
+            else -> SPLIT_OFF
+        }
+        prefs(context).edit()
+            .putString(KEY_SPLIT_MODE, safeMode)
+            .putStringSet(KEY_SPLIT_APPS, apps.filter { it.isNotBlank() }.toSet())
+            .apply()
+    }
+
+    fun splitMode(context: Context): String =
+        prefs(context).getString(KEY_SPLIT_MODE, SPLIT_OFF) ?: SPLIT_OFF
+
+    fun splitApps(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_SPLIT_APPS, emptySet()) ?: emptySet()
 }
