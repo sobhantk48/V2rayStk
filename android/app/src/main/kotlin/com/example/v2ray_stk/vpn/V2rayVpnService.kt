@@ -95,7 +95,7 @@ class V2rayVpnService : VpnService() {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
                 // قطع دستی توسط کاربر: prefs پاک شود تا ریبوت باعث اتصال خودسر نشود
-                runCatching { VpnPrefs.clear(this) }
+                runCatching { VpnPrefs.clearKeepLast(this) }
                 stopVpn()
                 return START_NOT_STICKY
             }
@@ -118,6 +118,7 @@ class V2rayVpnService : VpnService() {
                     // اتصال معمولی از UI: همه چیز برای استارت‌های بعدی ذخیره شود
                     runCatching {
                         VpnPrefs.save(this, config, torEnabled, killSwitch, alwaysOnVpn)
+                        VpnPrefs.saveLastConfig(this, config)
                     }
                 }
 

@@ -82,4 +82,26 @@ object VpnPrefs {
 
     fun splitApps(context: Context): Set<String> =
         prefs(context).getStringSet(KEY_SPLIT_APPS, emptySet()) ?: emptySet()
+
+    // ------------- Quick Settings Tile helpers (فیچر ۳۶) -------------
+    // این کلید با clear() پاک نمی‌شود تا کاشی همیشه بتواند دوباره وصل کند.
+    private const val KEY_LAST_CONFIG = "last_config"
+
+    private fun tilePrefs(context: Context) =
+        context.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE)
+
+    fun saveLastConfig(context: Context, config: String) {
+        if (config.isBlank()) return
+        tilePrefs(context).edit().putString(KEY_LAST_CONFIG, config).apply()
+    }
+
+    fun lastConfig(context: Context): String =
+        tilePrefs(context).getString(KEY_LAST_CONFIG, "") ?: ""
+
+    /** مثل clear() ولی آخرین کانفیگ را برای کاشی نگه می‌دارد. */
+    fun clearKeepLast(context: Context) {
+        val last = lastConfig(context)
+        clear(context)
+        if (last.isNotBlank()) saveLastConfig(context, last)
+    }
 }

@@ -4,4 +4,6 @@
     <string name="qs_tile_connected">Connected</string>
     <string name="qs_tile_connecting">Connecting…</string>
     <string name="qs_tile_disconnected">Disconnected</string>
+    <string name="qs_tile_no_config">No config saved — opening app</string>
+    <string name="qs_tile_need_permission">VPN permission needed — opening app</string>
 </resources>

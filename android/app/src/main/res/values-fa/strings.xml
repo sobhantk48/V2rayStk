@@ -4,4 +4,6 @@
     <string name="qs_tile_connected">متصل</string>
     <string name="qs_tile_connecting">در حال اتصال…</string>
     <string name="qs_tile_disconnected">قطع</string>
+    <string name="qs_tile_no_config">کانفیگی ذخیره نشده — اپ باز می‌شود</string>
+    <string name="qs_tile_need_permission">مجوز VPN لازم است — اپ باز می‌شود</string>
 </resources>

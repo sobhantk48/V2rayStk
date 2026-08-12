@@ -7,29 +7,31 @@ import android.content.Intent
 import android.graphics.drawable.Icon
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
+import android.widget.Toast
 import com.example.v2ray_stk.MainActivity
 import com.example.v2ray_stk.R
 
 /**
  * کاشی تنظیمات سریع (Quick Settings Tile) — فیچر ۳۶
  *
- * رفتار:
- *  - متصل / در حال اتصال  -> ACTION_DISCONNECT به V2rayVpnService
- *  - قطع                  -> اگر کانفیگ ذخیره‌شده و مجوز VPN موجود باشد، مستقیم وصل می‌شود
- *                            وگرنه اپ باز می‌شود تا کاربر پروفایل/مجوز را تعیین کند
+ * تپ اول (قطع + کانفیگ موجود + مجوز موجود) -> اتصال بی‌واسطه، بدون باز شدن اپ
+ * تپ دوم (متصل/در حال اتصال)               -> ACTION_DISCONNECT
+ * فقط اگر مجوز VPN یا کانفیگ نبود           -> اپ باز می‌شود
  *
- * منبع وضعیت: VpnState (هم‌پروسه با سرویس). برای رفرش آنی،
- * V2rayVpnService متد requestUpdate() را صدا می‌زند.
+ * کانفیگ از VpnPrefs.config خوانده می‌شود و اگر خالی بود از last_config
+ * (کلیدی که هنگام disconnect پاک نمی‌شود) بازیابی می‌گردد.
  */
 class VpnTileService : TileService() {
 
     companion object {
         private const val TAG = "VpnTileService"
 
-        /** از سرویس صدا زده می‌شود تا سیستم onStartListening را دوباره اجرا کند. */
+        /** از سرویس/اکتیویتی صدا زده می‌شود تا سیستم onStartListening را دوباره اجرا کند. */
         fun requestUpdate(context: Context) {
             runCatching {
                 requestListeningState(
@@ -39,6 +41,8 @@ class VpnTileService : TileService() {
             }.onFailure { Log.w(TAG, "requestListeningState failed: " + it.message) }
         }
     }
+
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onTileAdded() {
         super.onTileAdded()
@@ -50,10 +54,19 @@ class VpnTileService : TileService() {
         renderTile()
     }
 
+    override fun onStopListening() {
+        handler.removeCallbacksAndMessages(null)
+        super.onStopListening()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+
     override fun onClick() {
         super.onClick()
         if (isLocked) {
-            // دستگاه قفل است: اول باز شود، بعد سوییچ
             unlockAndRun { toggle() }
         } else {
             toggle()
@@ -68,6 +81,15 @@ class VpnTileService : TileService() {
             else -> connect()
         }
         renderTile()
+        scheduleRefresh()
+    }
+
+    /** وضعیت واقعی با تأخیر عوض می‌شود؛ چند بار رندر می‌کنیم تا آیکون یخ نزند. */
+    private fun scheduleRefresh() {
+        handler.removeCallbacksAndMessages(null)
+        for (delay in longArrayOf(300L, 900L, 2000L, 4000L, 7000L)) {
+            handler.postDelayed({ renderTile() }, delay)
+        }
     }
 
     private fun disconnect() {
@@ -79,11 +101,22 @@ class VpnTileService : TileService() {
     }
 
     private fun connect() {
-        val config = runCatching { VpnPrefs.config(this) }.getOrDefault("")
-        val prepared = runCatching { VpnService.prepare(this) == null }.getOrDefault(false)
+        val config = runCatching {
+            val saved = VpnPrefs.config(this)
+            if (saved.isNotBlank()) saved else VpnPrefs.lastConfig(this)
+        }.getOrDefault("")
 
-        if (config.isBlank() || !prepared) {
-            Log.i(TAG, "کانفیگ یا مجوز VPN موجود نیست، اپ باز می‌شود")
+        if (config.isBlank()) {
+            Log.i(TAG, "کانفیگی ذخیره نشده است؛ اپ باز می‌شود")
+            toast(getString(R.string.qs_tile_no_config))
+            openApp()
+            return
+        }
+
+        val needsPermission = runCatching { VpnService.prepare(this) != null }.getOrDefault(true)
+        if (needsPermission) {
+            Log.i(TAG, "مجوز VPN موجود نیست؛ اپ باز می‌شود")
+            toast(getString(R.string.qs_tile_need_permission))
             openApp()
             return
         }
@@ -108,7 +141,6 @@ class VpnTileService : TileService() {
             false
         }
 
-        // اگر سیستم اجازه استارت فورگراند از پس‌زمینه نداد، اپ را باز می‌کنیم
         if (!ok) openApp()
     }
 
@@ -132,25 +164,32 @@ class VpnTileService : TileService() {
         }.onFailure { Log.w(TAG, "openApp failed: " + it.message) }
     }
 
+    private fun toast(msg: String) {
+        runCatching {
+            handler.post { Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show() }
+        }
+    }
+
     // ------------------------------------------------------------- render
 
     private fun renderTile() {
         val tile = qsTile ?: return
         val status = VpnState.status
 
-        val labelRes: Int
+        val subRes: Int
         val state: Int
         when (status) {
             VpnStatus.CONNECTED -> {
-                labelRes = R.string.qs_tile_connected
+                subRes = R.string.qs_tile_connected
                 state = Tile.STATE_ACTIVE
             }
             VpnStatus.CONNECTING -> {
-                labelRes = R.string.qs_tile_connecting
-                state = Tile.STATE_UNAVAILABLE
+                subRes = R.string.qs_tile_connecting
+                // ACTIVE نگه می‌داریم تا کلیک بعدی برای کنسل کردن به ما برسد
+                state = Tile.STATE_ACTIVE
             }
             else -> {
-                labelRes = R.string.qs_tile_disconnected
+                subRes = R.string.qs_tile_disconnected
                 state = Tile.STATE_INACTIVE
             }
         }
@@ -160,10 +199,8 @@ class VpnTileService : TileService() {
         tile.icon = Icon.createWithResource(this, R.drawable.ic_qs_vpn)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = getString(labelRes)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.stateDescription = getString(labelRes)
+            tile.subtitle = getString(subRes)
+            tile.stateDescription = getString(subRes)
         }
 
         runCatching { tile.updateTile() }
