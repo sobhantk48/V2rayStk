@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- آیکن کاشی: سپر + قفل. تک‌رنگ سفید (الزام Quick Settings) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M15,10h-0.5V8.5C14.5,7.12 13.38,6 12,6S9.5,7.12 9.5,8.5V10H9c-0.55,0 -1,0.45 -1,1v4c0,0.55 0.45,1 1,1h6c0.55,0 1,-0.45 1,-1v-4C16,10.45 15.55,10 15,10zM10.8,8.5c0,-0.66 0.54,-1.2 1.2,-1.2s1.2,0.54 1.2,1.2V10h-2.4V8.5z" />
+</vector>

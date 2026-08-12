@@ -136,11 +136,11 @@ class V2rayVpnService : VpnService() {
         stopping = false
         currentAlwaysOn = alwaysOnVpn
         startForegroundSafely()
-        VpnState.update(VpnStatus.CONNECTING)
+        setStatus(VpnStatus.CONNECTING)
 
         if (config.isBlank()) {
             Log.e(TAG, "config خالی است")
-            VpnState.update(VpnStatus.DISCONNECTED)
+            setStatus(VpnStatus.DISCONNECTED)
             stopVpn()
             return
         }
@@ -149,7 +149,7 @@ class V2rayVpnService : VpnService() {
             val tun = establishTun(killSwitch)
             if (tun == null) {
                 Log.e(TAG, "establish() برگشت null (اجازه VPN صادر نشده؟)")
-                VpnState.update(VpnStatus.DISCONNECTED)
+                setStatus(VpnStatus.DISCONNECTED)
                 stopVpn()
                 return
             }
@@ -202,7 +202,7 @@ class V2rayVpnService : VpnService() {
             }
         } catch (e: Throwable) {
             Log.e(TAG, "startVpn failed", e)
-            VpnState.update(VpnStatus.DISCONNECTED)
+            setStatus(VpnStatus.DISCONNECTED)
             stopVpn()
         }
     }
@@ -218,12 +218,12 @@ class V2rayVpnService : VpnService() {
             )
 
             SingBoxBridge.start(this, fd, config)
-            VpnState.update(VpnStatus.CONNECTED)
+            setStatus(VpnStatus.CONNECTED)
 
             startBridgeWatch()
         } catch (e: Throwable) {
             Log.e(TAG, "launchCore failed", e)
-            VpnState.update(VpnStatus.DISCONNECTED)
+            setStatus(VpnStatus.DISCONNECTED)
             stopVpn()
         }
     }
@@ -242,6 +242,12 @@ class V2rayVpnService : VpnService() {
         }
         bridgeStarted = false
         bridgeRetry = 0
+    }
+
+    /** آپدیت وضعیت + رفرش کاشی تنظیمات سریع (فیچر ۳۶) */
+    private fun setStatus(status: String) {
+        VpnState.update(status)
+        VpnTileService.requestUpdate(this)
     }
 
     private var currentKillSwitch: Boolean = false
@@ -330,7 +336,7 @@ class V2rayVpnService : VpnService() {
         pendingTun = null
         runCatching { tunInterface?.close() }
         tunInterface = null
-        VpnState.update(VpnStatus.DISCONNECTED)
+        setStatus(VpnStatus.DISCONNECTED)
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         stopSelf()
     }
