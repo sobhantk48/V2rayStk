@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 // ابزار توسعه: خروجی نهایی sing-box را بعد از اعمال تنظیمات ادمین چاپ می‌کند.
 // اجرا:  dart run tool/dump_admin_config.dart
 import 'dart:convert';
