@@ -4,11 +4,11 @@ import 'package:v2ray_stk/features/sing_box/application/admin_config_patcher.dar
 void main() {
   group('Split DNS', () {
     test('domain parsing normalizes tld and wildcards', () {
-      expect(parseSplitDnsDomains('ir'), <String>['.ir']);
+      expect(parseSplitDnsDomains('.ir'), <String>['.ir']);
       expect(parseSplitDnsDomains('*.digikala.com'), <String>['.digikala.com']);
       expect(
         parseSplitDnsDomains('ir, aparat.com , ir'),
-        <String>['.ir', 'aparat.com'],
+        <String>['.ir', '.aparat.com'],
       );
       expect(parseSplitDnsDomains('   '), <String>[]);
     });
@@ -29,7 +29,7 @@ void main() {
         ],
       };
 
-      applySplitDnsPatch(dns, localServer: 'local', directDomains: 'ir');
+      applySplitDnsPatch(dns, localServer: 'local', directDomains: '.ir');
 
       final List<dynamic> servers = dns['servers'] as List<dynamic>;
       final Map<dynamic, dynamic> local = servers.last as Map<dynamic, dynamic>;
@@ -48,8 +48,8 @@ void main() {
 
     test('custom local server gets direct detour and is idempotent', () {
       final Map<String, dynamic> dns = <String, dynamic>{};
-      applySplitDnsPatch(dns, localServer: '78.157.42.100', directDomains: 'ir');
-      applySplitDnsPatch(dns, localServer: '78.157.42.100', directDomains: 'ir');
+      applySplitDnsPatch(dns, localServer: '78.157.42.100', directDomains: '.ir');
+      applySplitDnsPatch(dns, localServer: '78.157.42.100', directDomains: '.ir');
 
       expect((dns['servers'] as List<dynamic>).length, 1);
       expect((dns['rules'] as List<dynamic>).length, 1);

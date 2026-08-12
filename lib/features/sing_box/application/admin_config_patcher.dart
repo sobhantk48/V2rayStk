@@ -256,7 +256,7 @@ List<String> parseSplitDnsDomains(String raw) {
     if (value.isEmpty) {
       continue;
     }
-    if (!value.contains('.') && !value.startsWith('.')) {
+    if (!value.startsWith('.')) {
       value = '.$value';
     }
     if (!out.contains(value)) {

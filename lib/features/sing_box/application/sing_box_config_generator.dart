@@ -252,15 +252,15 @@ class SingBoxConfigGenerator {
           'inet4_address': '172.19.0.1/28',
           'mtu': 9000,
           'auto_route': true,
-          'strict_route': false,
+          'strict_route': isTor,
           'stack': 'system',
           'endpoint_independent_nat': true,
           'sniff': true,
-            // در حالت Tor دامنه‌ی sniff‌شده باید جایگزین مقصد شود تا نام دامنه
-            // (نه IP خام) به SOCKS تور تحویل داده شود.
-            'sniff_override_destination': isTor,
-            // در حالت Tor دامنه نباید محلی resolve شود؛ حل نام کار خود تور است.
-            if (!isTor) 'domain_strategy': 'ipv4_only',
+          // در حالت Tor دامنه‌ی sniff‌شده باید جایگزین مقصد شود تا نام دامنه
+          // (نه IP خام) به SOCKS تور تحویل داده شود.
+          'sniff_override_destination': isTor,
+          // در حالت Tor دامنه نباید محلی resolve شود؛ حل نام کار خود تور است.
+          if (!isTor) 'domain_strategy': 'ipv4_only',
         }
       ],
       'outbounds': [
@@ -276,6 +276,11 @@ class SingBoxConfigGenerator {
           {
             'port': <int>[53],
             'outbound': 'dns-out'
+          },
+          // DoT/853 مسدود می‌شود تا اپ‌ها مجبور به استفاده از DNS داخلی شوند
+          {
+            'port': <int>[853],
+            'outbound': 'block'
           },
           // ۲) لوکال‌هاست و شبکه‌های خصوصی هرگز نباید وارد تونل شوند
           {
@@ -338,12 +343,14 @@ class SingBoxConfigGenerator {
       {
         'tag': 'bootstrap-dns',
         'address': '8.8.8.8',
+        'strategy': 'ipv4_only',
         'detour': 'direct',
       },
       if (isTor)
         {
           'tag': 'proxy-dns',
           'address': 'udp://127.0.0.1:5353',
+          'strategy': 'ipv4_only',
           'detour': 'direct',
         }
       else
@@ -366,7 +373,7 @@ class SingBoxConfigGenerator {
         },
       {
         'domain_suffix': <String>['.local', '.lan', '.home'],
-        'server': 'bootstrap-dns',
+        'server': isTor ? 'block-dns' : 'bootstrap-dns',
       },
     ];
 
