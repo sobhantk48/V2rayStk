@@ -33,7 +33,7 @@ class V2rayVpnService : VpnService() {
         // باید دقیقا با مقادیر _tunInbound در sing_box_config_generator.dart یکی باشد
         private const val TUN_ADDRESS = "172.19.0.1"
         private const val TUN_PREFIX = 28
-        private const val TUN_MTU = 1500
+        private const val TUN_MTU = 1412
 
         // فاصله بین تلاش‌های اتصال Bridge به هسته
         private const val BRIDGE_FIRST_DELAY_MS = 700L

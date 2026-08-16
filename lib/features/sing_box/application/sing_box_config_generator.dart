@@ -485,7 +485,7 @@ class SingBoxConfigGenerator {
           'tag': 'tun-in',
           'interface_name': 'tun0',
           'inet4_address': '172.19.0.1/28',
-          'mtu': 9000,
+          'mtu': 1412,
           'auto_route': true,
           'strict_route': isTor,
           'stack': 'system',
@@ -604,7 +604,7 @@ class SingBoxConfigGenerator {
           // DoH روی پورت 443 از داخل تونل. سرویس‌های ابری مثل Railway
           // پورت 53 خروجی را می‌بندند، ولی 443 همیشه باز است.
           // IP مستقیم استفاده می‌شود تا نیازی به resolve اولیه نباشد.
-          'address': 'https://8.8.8.8/dns-query',
+          'address': 'https://1.1.1.1/dns-query',
           // با اینکه آدرس یک IP خالص است و resolve لازم ندارد،
           // این فیلد به‌عنوان بیمهٔ ضدحلقه باقی می‌ماند.
           'address_resolver': 'bootstrap-dns',
