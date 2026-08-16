@@ -392,14 +392,21 @@ class V2rayVpnService : VpnService() {
 
     @Synchronized
     private fun closeTunFd() {
-        try {
-            tunFd?.close()
-            android.util.Log.i("V2rayVpnService", "tunFd closed")
-        } catch (e: Throwable) {
-            android.util.Log.w("V2rayVpnService", "tunFd close failed: ${e.message}")
-        } finally {
-            tunFd = null
+        val pending = pendingTun
+        val active = tunInterface
+        pendingTun = null
+        tunInterface = null
+        if (pending != null) {
+            runCatching { pending.close() }
+                .onSuccess { Log.i(TAG, "pendingTun closed") }
+                .onFailure { Log.w(TAG, "pendingTun close failed: ${it.message}") }
         }
+        if (active != null) {
+            runCatching { active.close() }
+                .onSuccess { Log.i(TAG, "tunInterface closed") }
+                .onFailure { Log.w(TAG, "tunInterface close failed: ${it.message}") }
+        }
+    }
     }
 
 }

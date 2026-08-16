@@ -96,7 +96,9 @@ V2rayStk_source_new.zip
 build/
 .dart_tool/
 .trash_bak/
-tools/
+# tools/ ignored, except helper patch scripts
+tools/*
+!tools/patches/
 *.bak
 *.bak2
 *.bak_*
