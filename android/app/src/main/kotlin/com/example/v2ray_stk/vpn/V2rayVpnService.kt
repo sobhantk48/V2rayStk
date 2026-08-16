@@ -407,6 +407,5 @@ class V2rayVpnService : VpnService() {
                 .onFailure { Log.w(TAG, "tunInterface close failed: ${it.message}") }
         }
     }
-    }
 
 }
