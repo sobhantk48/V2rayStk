@@ -91,6 +91,12 @@ class V2rayVpnService : VpnService() {
         }
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        // لاگ‌ها باید قبل از هر خط هسته روی دیسک آماده باشند
+        runCatching { LogStore.init(applicationContext) }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> {

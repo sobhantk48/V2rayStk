@@ -49,6 +49,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        runCatching { com.example.v2ray_stk.vpn.LogStore.init(applicationContext) }
 
         LogChannel.register(flutterEngine)
         com.example.v2ray_stk.vpn.LogChannel.register(flutterEngine)

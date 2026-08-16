@@ -1,4 +1,16 @@
-package com.example.v2ray_stk.vpn
+#!/usr/bin/env python3
+"""ماندگار کردن لاگ‌های structured روی دیسک (NDJSON چرخشی)."""
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+K = os.path.join(ROOT, "android", "app", "src", "main", "kotlin", "com", "example", "v2ray_stk")
+
+LOG_STORE = os.path.join(K, "vpn", "LogStore.kt")
+SERVICE = os.path.join(K, "vpn", "V2rayVpnService.kt")
+ACTIVITY = os.path.join(K, "MainActivity.kt")
+
+LOG_STORE_SRC = r'''package com.example.v2ray_stk.vpn
 
 import android.content.Context
 import android.util.Log
@@ -266,3 +278,74 @@ object LogStore {
         }
     }
 }
+'''
+
+ON_CREATE = """    override fun onCreate() {
+        super.onCreate()
+        // لاگ‌ها باید قبل از هر خط هسته روی دیسک آماده باشند
+        runCatching { LogStore.init(applicationContext) }
+    }
+
+"""
+
+INIT_LINE = "        runCatching { com.example.v2ray_stk.vpn.LogStore.init(applicationContext) }\n"
+
+
+def read(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
+def write(path, text):
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def check(path):
+    if not os.path.isfile(path):
+        print("[x] پیدا نشد: " + path)
+        sys.exit(1)
+
+
+def patch_service():
+    src = read(SERVICE)
+    if "override fun onCreate()" in src:
+        print("[=] V2rayVpnService: onCreate از قبل هست، رد شد")
+        return
+    anchor = "    override fun onStartCommand("
+    if anchor not in src:
+        print("[x] V2rayVpnService: onStartCommand پیدا نشد")
+        sys.exit(1)
+    src = src.replace(anchor, ON_CREATE + anchor, 1)
+    write(SERVICE, src)
+    print("[+] V2rayVpnService: onCreate + LogStore.init افزوده شد")
+
+
+def patch_activity():
+    src = read(ACTIVITY)
+    if "LogStore.init(" in src:
+        print("[=] MainActivity: LogStore.init از قبل هست، رد شد")
+        return
+    anchor = "        super.configureFlutterEngine(flutterEngine)\n"
+    if anchor not in src:
+        print("[x] MainActivity: super.configureFlutterEngine پیدا نشد")
+        sys.exit(1)
+    src = src.replace(anchor, anchor + INIT_LINE, 1)
+    write(ACTIVITY, src)
+    print("[+] MainActivity: LogStore.init افزوده شد")
+
+
+def main():
+    for path in (LOG_STORE, SERVICE, ACTIVITY):
+        check(path)
+
+    write(LOG_STORE, LOG_STORE_SRC)
+    print("[+] LogStore.kt بازنویسی شد (NDJSON چرخشی + init/restore)")
+
+    patch_service()
+    patch_activity()
+    print("\nتمام شد. حالا سورس را کامیت و پوش کن تا Actions بیلد بگیرد.")
+
+
+if __name__ == "__main__":
+    main()
