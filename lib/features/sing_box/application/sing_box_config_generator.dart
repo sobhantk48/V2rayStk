@@ -601,9 +601,12 @@ class SingBoxConfigGenerator {
       else
         {
           'tag': 'proxy-dns',
-          // DNS از داخل تونل ولی روی TCP ساده. رمزنگاری‌اش را خودِ تونل
-          // انجام می‌دهد، و برخلاف DoH توسط CDN جلوی سرور رد نمی‌شود.
-          'address': 'tcp://8.8.8.8',
+          // DoH روی پورت 443 از داخل تونل. سرویس‌های ابری مثل Railway
+          // پورت 53 خروجی را می‌بندند، ولی 443 همیشه باز است.
+          // IP مستقیم استفاده می‌شود تا نیازی به resolve اولیه نباشد.
+          'address': 'https://8.8.8.8/dns-query',
+          // با اینکه آدرس یک IP خالص است و resolve لازم ندارد،
+          // این فیلد به‌عنوان بیمهٔ ضدحلقه باقی می‌ماند.
           'address_resolver': 'bootstrap-dns',
           'strategy': 'ipv4_only',
           'detour': 'proxy',
