@@ -27,6 +27,8 @@ object LogChannel {
         "CoreSelector",
         "v2ray_stk",
         "tun",
+        "flutter",
+        "VpnController",
     )
 
     fun register(engine: FlutterEngine) {

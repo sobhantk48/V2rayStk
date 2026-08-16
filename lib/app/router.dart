@@ -5,7 +5,7 @@ import '../features/admin/presentation/admin_login_screen.dart';
 import '../features/admin/presentation/admin_panel_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/groups/presentation/groups_manage_screen.dart';
-import '../features/logs/presentation/native_log_screen.dart';
+import '../features/logs/presentation/logs_hub_screen.dart';
 import '../features/profiles/presentation/profiles_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/speedtest/presentation/speed_test_screen.dart';
@@ -61,7 +61,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/logs',
       builder: (BuildContext context, GoRouterState state) {
-        return const NativeLogScreen();
+        return const LogsHubScreen();
       },
     ),
     GoRoute(

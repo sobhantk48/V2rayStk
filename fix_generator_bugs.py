@@ -1,4 +1,10 @@
-import 'dart:convert';
+#!/usr/bin/env python3
+"""رفع باگ‌های sing_box_config_generator.dart"""
+import shutil, pathlib, sys
+
+TARGET = pathlib.Path("lib/features/sing_box/application/sing_box_config_generator.dart")
+
+SRC = r'''import 'dart:convert';
 
 import '../../profiles/domain/profile.dart';
 import '../../profiles/domain/profile_type.dart';
@@ -854,3 +860,21 @@ class SingBoxConfigGenerator {
         'در کانفیگ sing-box هیچ outbound پروکسی قابل استفاده‌ای پیدا نشد.');
   }
 }
+'''
+
+def main():
+    if not TARGET.exists():
+        print("خطا: فایل پیدا نشد ->", TARGET)
+        print("مطمئن شو داخل پوشه‌ی ریشه‌ی پروژه هستی.")
+        sys.exit(1)
+
+    backup = TARGET.with_suffix(".dart.bugfix.bak")
+    shutil.copy2(TARGET, backup)
+    print("بکاپ ساخته شد ->", backup)
+
+    TARGET.write_text(SRC, encoding="utf-8")
+    print("فایل بازنویسی شد ->", TARGET)
+    print("تعداد خطوط جدید:", len(SRC.splitlines()))
+
+if __name__ == "__main__":
+    main()

@@ -105,3 +105,6 @@ tools/
 *.removed
 V2rayStk_source_new*.zip
 cleanup_project.py
+
+# backup files from patch scripts
+*.bak.*

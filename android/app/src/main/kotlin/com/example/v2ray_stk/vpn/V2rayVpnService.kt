@@ -125,7 +125,7 @@ class V2rayVpnService : VpnService() {
                 startVpn(config, torEnabled, killSwitch, alwaysOnVpn)
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startVpn(
@@ -326,6 +326,7 @@ class V2rayVpnService : VpnService() {
     }
 
     private fun stopVpn() {
+        closeTunFd()
         stopping = true
         stopBridge()
         runCatching { SingBoxBridge.stop() }
@@ -385,6 +386,19 @@ class V2rayVpnService : VpnService() {
                 NotificationManager.IMPORTANCE_LOW,
             )
             manager.createNotificationChannel(channel)
+        }
+    }
+
+
+    @Synchronized
+    private fun closeTunFd() {
+        try {
+            tunFd?.close()
+            android.util.Log.i("V2rayVpnService", "tunFd closed")
+        } catch (e: Throwable) {
+            android.util.Log.w("V2rayVpnService", "tunFd close failed: ${e.message}")
+        } finally {
+            tunFd = null
         }
     }
 

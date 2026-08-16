@@ -93,10 +93,10 @@ class LogState {
 
 /// پل ارتباطی لاگ با سمت نیتیو
 class LogPlatformService {
-  static const String _vpnChannel = 'com.v2ray.stk/vpn';
+  static const String _storeChannel = 'com.v2ray.stk/log_store';
   static const String _logChannel = 'com.v2ray.stk/logs';
 
-  static const MethodChannel _method = MethodChannel(_vpnChannel);
+  static const MethodChannel _method = MethodChannel(_storeChannel);
   static const EventChannel _events = EventChannel(_logChannel);
 
   Stream<LogEntry> stream() {
@@ -146,22 +146,62 @@ class LogController extends StateNotifier<LogState> {
 
   final LogPlatformService _service;
   StreamSubscription<LogEntry>? _sub;
+  bool _nativeStreamAlive = true;
 
   Future<void> _init() async {
     final List<LogEntry> initial = await _service.snapshot();
     if (!mounted) {
       return;
     }
-    state = state.copyWith(entries: _trim(initial));
-
-    _sub = _service.stream().listen((LogEntry entry) {
-      if (state.paused) {
-        return;
-      }
+    // merge نه replace: ممکن است پیش از تکمیل این await،
+    // لاگ‌هایی از سمت Dart (مثل VpnController) append شده باشند.
+    if (initial.isNotEmpty) {
       state = state.copyWith(
-        entries: _trim(<LogEntry>[...state.entries, entry]),
+        entries: _trim(<LogEntry>[...initial, ...state.entries]),
       );
-    });
+    }
+
+    _sub = _service.stream().listen(
+      (LogEntry entry) {
+        if (state.paused) {
+          return;
+        }
+        state = state.copyWith(
+          entries: _trim(<LogEntry>[...state.entries, entry]),
+        );
+      },
+      onError: (Object error, StackTrace _) {
+        // کانال لاگ نیتیو StreamHandler ندارد؛ خطا را می‌بلعیم
+        // تا بافر داخلی سالم بماند و unhandled error ندهد.
+        _nativeStreamAlive = false;
+        if (kDebugMode) {
+          debugPrint('LogController: native log stream unavailable ($error)');
+        }
+      },
+      cancelOnError: true,
+    );
+  }
+
+  /// آیا استریم لاگ نیتیو زنده است؟ در نبودش UI باید فقط بافر Dart را نشان دهد.
+  bool get nativeStreamAlive => _nativeStreamAlive;
+
+  /// افزودن یک خط لاگ از سمت Dart (مثلا خطاهای VpnController).
+  /// مستقل از logcat کار می‌کند و در حالت paused هم ثبت می‌شود.
+  void append({
+    required String level,
+    required String tag,
+    required String message,
+  }) {
+    final LogEntry entry = LogEntry(
+      id: DateTime.now().microsecondsSinceEpoch,
+      time: DateTime.now(),
+      level: level,
+      tag: tag,
+      message: message,
+    );
+    state = state.copyWith(
+      entries: _trim(<LogEntry>[...state.entries, entry]),
+    );
   }
 
   List<LogEntry> _trim(List<LogEntry> list) {
@@ -196,7 +236,17 @@ class LogController extends StateNotifier<LogState> {
     if (!mounted) {
       return;
     }
-    state = state.copyWith(entries: _trim(list));
+    if (list.isEmpty) {
+      // کانال نیتیو چیزی نداد؛ بافر داخلی را پاک نمی‌کنیم.
+      return;
+    }
+    // id لاگ‌های Dart از microsecondsSinceEpoch است و با idهای نیتیو تلاقی نمی‌کند.
+    final Set<int> nativeIds = list.map((LogEntry e) => e.id).toSet();
+    final List<LogEntry> merged = <LogEntry>[
+      ...list,
+      ...state.entries.where((LogEntry e) => !nativeIds.contains(e.id)),
+    ]..sort((LogEntry a, LogEntry b) => a.time.compareTo(b.time));
+    state = state.copyWith(entries: _trim(merged));
   }
 
   Future<void> clear() async {

@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform/vpn_platform_service.dart';
 import '../../admin/domain/admin_settings.dart';
+import '../../logs/application/log_controller.dart';
 import '../../profiles/application/profile_providers.dart';
 import '../../profiles/domain/profile.dart';
 import '../../profiles/domain/profile_type.dart';
@@ -64,7 +67,8 @@ class VpnController extends Notifier<VpnConnectionState> {
         alwaysOnVpn: settings.alwaysOnVpn,
       );
       state = VpnConnectionState.connected;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _logFailure('connect', error, stackTrace);
       state = VpnConnectionState.disconnected;
       rethrow;
     }
@@ -75,7 +79,8 @@ class VpnController extends Notifier<VpnConnectionState> {
     try {
       await _service.disconnect();
       state = VpnConnectionState.disconnected;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _logFailure('disconnect', error, stackTrace);
       state = VpnConnectionState.connected;
       rethrow;
     }
@@ -92,7 +97,8 @@ class VpnController extends Notifier<VpnConnectionState> {
         alwaysOnVpn: settings.alwaysOnVpn,
       );
       state = VpnConnectionState.connected;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _logFailure('connectWithProfile', error, stackTrace);
       state = VpnConnectionState.disconnected;
       rethrow;
     }
@@ -132,4 +138,56 @@ class VpnController extends Notifier<VpnConnectionState> {
     );
     return jsonEncode(patched);
   }
+
+  Object? _lastError;
+  StackTrace? _lastStackTrace;
+
+  /// آخرین خطای رخ‌داده در چرخهٔ اتصال (برای نمایش در UI).
+  Object? get lastError => _lastError;
+
+  StackTrace? get lastStackTrace => _lastStackTrace;
+
+  /// پیام خوانا از آخرین خطا؛ رشتهٔ خالی یعنی خطایی ثبت نشده است.
+  String get lastErrorMessage {
+    final Object? error = _lastError;
+    if (error == null) {
+      return '';
+    }
+    if (error is SingBoxConfigException) {
+      return error.message;
+    }
+    if (error is PlatformException) {
+      return error.message ?? error.code;
+    }
+    return error.toString();
+  }
+
+  void _logFailure(String action, Object error, StackTrace stackTrace) {
+    _lastError = error;
+    _lastStackTrace = stackTrace;
+    developer.log(
+      'VPN $action failed: $error',
+      name: 'VpnController',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _appendToLogBuffer(action, error, stackTrace);
+  }
+
+  /// ثبت خطا در بافر ۳۰۰۰تایی Dart تا در صفحهٔ لاگ اپ هم دیده شود.
+  void _appendToLogBuffer(String action, Object error, StackTrace stackTrace) {
+    try {
+      ref.read(logControllerProvider.notifier).append(
+            level: 'error',
+            tag: 'VpnController',
+            message: 'VPN $action failed: $error\n$stackTrace',
+          );
+    } on Object catch (bufferError) {
+      developer.log(
+        'log buffer unavailable: $bufferError',
+        name: 'VpnController',
+      );
+    }
+  }
+
 }
