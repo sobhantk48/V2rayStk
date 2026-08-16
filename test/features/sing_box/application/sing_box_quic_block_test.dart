@@ -83,4 +83,55 @@ void main() {
       expect(hasFullUdpBlock(torProfile), isTrue);
     });
   });
+
+  List<Map<String, dynamic>> dnsRules(Profile profile) {
+    final config = generator.generate(profile).value;
+    final dns = Map<String, dynamic>.from(config['dns'] as Map);
+    return (dns['rules'] as List)
+        .cast<Map>()
+        .map(Map<String, dynamic>.from)
+        .toList();
+  }
+
+  Map<String, dynamic>? svcbRule(Profile profile) {
+    for (final rule in dnsRules(profile)) {
+      final types = (rule['query_type'] as List?)?.cast<int>();
+      if (types != null && types.contains(65)) return rule;
+    }
+    return null;
+  }
+
+  group('مسدودسازی رکورد HTTPS/SVCB', () {
+    test('قانون query_type برای هر دو نوع 64 و 65 وجود دارد', () {
+      final types =
+          (svcbRule(vlessProfile)?['query_type'] as List?)?.cast<int>();
+      expect(types, isNotNull,
+          reason: 'بدون این قانون مرورگر باز هم HTTP/3 را امتحان می کند');
+      expect(types, containsAll(<int>[64, 65]));
+    });
+
+    test('پاسخ این رکوردها از block-dns می آید', () {
+      expect(svcbRule(vlessProfile)?['server'], 'block-dns');
+    });
+
+    test('این قانون اولین قانون DNS است تا بر بقیه اولویت بگیرد', () {
+      final first = dnsRules(vlessProfile).first;
+      expect(first['query_type'], isNotNull);
+    });
+
+    test('در حالت Tor هم همین قانون برقرار است', () {
+      expect(svcbRule(torProfile)?['server'], 'block-dns');
+    });
+
+    test('سرور block-dns با rcode success تعریف شده است', () {
+      final config = generator.generate(vlessProfile).value;
+      final dns = Map<String, dynamic>.from(config['dns'] as Map);
+      final servers = (dns['servers'] as List)
+          .cast<Map>()
+          .map(Map<String, dynamic>.from)
+          .toList();
+      final block = servers.firstWhere((s) => s['tag'] == 'block-dns');
+      expect(block['address'], 'rcode://success');
+    });
+  });
 }

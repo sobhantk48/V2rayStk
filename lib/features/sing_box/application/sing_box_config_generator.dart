@@ -581,7 +581,7 @@ class SingBoxConfigGenerator {
 
   /// DNS بدون حلقه:
   ///  - bootstrap-dns : مستقیم (direct) برای حل دامنه‌ی سرور پروکسی
-  ///  - proxy-dns     : تور -> DNSPort محلی 5353 ، غیرتور -> DoH از داخل تونل
+  ///  - proxy-dns     : تور -> DNSPort محلی 5353 ، غیرتور -> DNS روی TCP از داخل تونل
   Map<String, dynamic> _buildDns(bool isTor, String proxyServer) {
     final List<Map<String, dynamic>> servers = <Map<String, dynamic>>[
       // همیشه یک resolver مستقیم داریم تا آدرس سرور بدون تونل حل شود
@@ -612,6 +612,12 @@ class SingBoxConfigGenerator {
     ];
 
     final List<Map<String, dynamic>> rules = <Map<String, dynamic>>[
+      // رکوردهای HTTPS/SVCB (type 64 و 65) را خالی برگردان تا
+      // مرورگر سراغ HTTP/3 روی QUIC نرود و به HTTP/2 روی TCP برگردد.
+      {
+        'query_type': <int>[64, 65],
+        'server': 'block-dns',
+      },
       // دامنه‌ی سرور پروکسی حتماً باید با bootstrap حل شود (جلوگیری از حلقه)
       if (proxyServer.isNotEmpty && !_isIpLiteral(proxyServer))
         {
