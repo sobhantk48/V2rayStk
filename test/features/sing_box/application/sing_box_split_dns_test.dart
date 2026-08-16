@@ -48,8 +48,10 @@ void main() {
 
     test('custom local server gets direct detour and is idempotent', () {
       final Map<String, dynamic> dns = <String, dynamic>{};
-      applySplitDnsPatch(dns, localServer: '78.157.42.100', directDomains: '.ir');
-      applySplitDnsPatch(dns, localServer: '78.157.42.100', directDomains: '.ir');
+      applySplitDnsPatch(dns,
+          localServer: '78.157.42.100', directDomains: '.ir');
+      applySplitDnsPatch(dns,
+          localServer: '78.157.42.100', directDomains: '.ir');
 
       expect((dns['servers'] as List<dynamic>).length, 1);
       expect((dns['rules'] as List<dynamic>).length, 1);

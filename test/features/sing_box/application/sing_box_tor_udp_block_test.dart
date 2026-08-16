@@ -17,7 +17,10 @@ void main() {
   }
 
   bool hasUdpBlock(Profile profile) => routeRules(profile).any(
-        (rule) => rule['network'] == 'udp' && rule['outbound'] == 'block',
+        (rule) =>
+            rule['network'] == 'udp' &&
+            rule['outbound'] == 'block' &&
+            rule['port'] == null,
       );
 
   final torTyped = Profile(

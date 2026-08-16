@@ -370,8 +370,7 @@ class SingBoxConfigGenerator {
         throw const SingBoxConfigException(
             'ساختار لینک shadowsocks نامعتبر است.');
       }
-      final List<String> pair =
-          _splitCredentials(decoded.substring(0, at2));
+      final List<String> pair = _splitCredentials(decoded.substring(0, at2));
       method = pair[0];
       password = pair[1];
       address = _splitHostPort(decoded.substring(at2 + 1));
@@ -492,11 +491,10 @@ class SingBoxConfigGenerator {
           'stack': 'system',
           'endpoint_independent_nat': true,
           'sniff': true,
-          // در حالت Tor دامنه‌ی sniff‌شده باید جایگزین مقصد شود تا نام دامنه
-          // (نه IP خام) به SOCKS تور تحویل داده شود.
-          'sniff_override_destination': isTor,
-          // در حالت Tor دامنه نباید محلی resolve شود؛ حل نام کار خود تور است.
-          if (!isTor) 'domain_strategy': 'ipv4_only',
+          // دامنه‌ی sniff‌شده جای IP مقصد را می‌گیرد تا خودِ سرور پروکسی
+          // (یا تور) نام را resolve کند. مقاوم‌ترین حالت در برابر DNS آلوده
+          // و لازم برای باز شدن گوگل/یوتیوب.
+          'sniff_override_destination': true,
         }
       ],
       'outbounds': [
@@ -544,9 +542,20 @@ class SingBoxConfigGenerator {
             },
           // ۴) در حالت Tor هیچ UDP نداریم (SOCKS5 تور UDP ندارد).
           //    پورت ۵۳ و loopback بالاتر هندل شده‌اند، پس DNS سالم می‌ماند.
+          // ۴) در حالت Tor هیچ UDP نداریم (SOCKS5 تور UDP ندارد).
           if (isTor)
             {
               'network': 'udp',
+              'outbound': 'block',
+            },
+          // ۵) در حالت عادی QUIC مسدود می‌شود. سرورهای ws/CDN اغلب فقط
+          //    TCP عبور می‌دهند و بسته‌های UDP/443 بی‌پاسخ گم می‌شوند؛
+          //    نتیجه‌اش گیر کردن یوتیوب/گوگل است. با block، مرورگر فوراً
+          //    به HTTP/2 روی TCP برمی‌گردد.
+          if (!isTor)
+            {
+              'network': 'udp',
+              'port': <int>[443, 8443],
               'outbound': 'block',
             },
         ],
@@ -592,7 +601,9 @@ class SingBoxConfigGenerator {
       else
         {
           'tag': 'proxy-dns',
-          'address': 'https://1.1.1.1/dns-query',
+          // DNS از داخل تونل ولی روی TCP ساده. رمزنگاری‌اش را خودِ تونل
+          // انجام می‌دهد، و برخلاف DoH توسط CDN جلوی سرور رد نمی‌شود.
+          'address': 'tcp://8.8.8.8',
           'address_resolver': 'bootstrap-dns',
           'strategy': 'ipv4_only',
           'detour': 'proxy',

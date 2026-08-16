@@ -119,8 +119,8 @@ void main() {
     test('هیچ قانون محلی به DNS عمومی اشاره نمی‌کند', () {
       final config = configFor(torProfile);
       for (final rule in dnsRules(config)) {
-        final values = flatStrings(rule['domain_suffix']) +
-            flatStrings(rule['domain']);
+        final values =
+            flatStrings(rule['domain_suffix']) + flatStrings(rule['domain']);
         final isLocal = values.any(
           (v) => localMarkers.any((m) => v.toLowerCase().endsWith(m)),
         );

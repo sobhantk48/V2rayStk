@@ -5,7 +5,7 @@ import 'package:v2ray_stk/features/sing_box/application/sing_box_config_generato
 
 /// رگرسیون نشتی نام دامنه در حالت Tor.
 /// در حالت Tor: دامنه باید override شود و محلی resolve نشود.
-/// در حالت غیرتور: رفتار قدیمی حفظ شود (ipv4_only + override=false).
+/// در حالت غیرتور: دامنه باید override شود تا SNI درست به سرور برسد.
 void main() {
   const generator = SingBoxConfigGenerator();
   final now = DateTime.now();
@@ -31,8 +31,7 @@ void main() {
     id: 'vless-sniff-1',
     name: 'Reality Node',
     type: ProfileType.vless,
-    rawConfig:
-        'vless://11111111-2222-3333-4444-555555555555@example.com:443'
+    rawConfig: 'vless://11111111-2222-3333-4444-555555555555@example.com:443'
         '?security=reality&pbk=abcdef123456&sni=example.com&sid=ab&fp=chrome',
     createdAt: now,
     server: 'example.com',
@@ -56,13 +55,15 @@ void main() {
     });
   });
 
-  group('حالت غیرتور: رفتار قبلی حفظ می‌شود', () {
-    test('override خاموش می‌ماند تا قوانین ip_cidr نشکنند', () {
-      expect(tunInbound(vlessProfile)['sniff_override_destination'], isFalse);
+  group('حالت غیرتور: دامنه به پروکسی می رسد', () {
+    test('override روشن است تا نام دامنه به outbound برسد', () {
+      expect(tunInbound(vlessProfile)['sniff_override_destination'], isTrue,
+          reason: 'اگر false باشد سرور فقط IP جعلی TUN را می بیند');
     });
 
-    test('domain_strategy همان ipv4_only است', () {
-      expect(tunInbound(vlessProfile)['domain_strategy'], 'ipv4_only');
+    test('domain_strategy محلی وجود ندارد', () {
+      expect(tunInbound(vlessProfile).containsKey('domain_strategy'), isFalse,
+          reason: 'ipv4_only باعث resolve محلی و شکستن SNI می شود');
     });
   });
 }
