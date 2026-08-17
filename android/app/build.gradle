@@ -21,7 +21,7 @@ android {
         versionCode flutter.versionCode
         versionName flutter.versionName
 
-        // فقط همین دو ABI بسته‌بندی می‌شود.
+        // فقط arm64-v8a بسته‌بندی می‌شود.
         // مهم: splits { abi { ... } } را هرگز کنار این بلوک اضافه نکن،
         // و در دستور build از --split-per-abi استفاده نکن.
         ndk {
@@ -44,9 +44,11 @@ android {
 
     packaging {
         jniLibs {
+            excludes += ["armeabi-v7a/**", "lib/armeabi-v7a/**", "**/armeabi-v7a/**", "armeabi/**", "lib/armeabi/**", "**/armeabi/**", "x86/**", "lib/x86/**", "**/x86/**", "x86_64/**", "lib/x86_64/**", "**/x86_64/**", "mips/**", "lib/mips/**", "**/mips/**", "mips64/**", "lib/mips64/**", "**/mips64/**", "riscv64/**", "lib/riscv64/**", "**/riscv64/**"]
             // libbox.so باید بدون فشرده‌سازی و قابل mmap بماند
             useLegacyPackaging false
             keepDebugSymbols += ["**/libbox.so"]
+            // حذف صریح ABIهای ناخواسته که از AAR می‌آیند
         }
         resources {
             excludes += ["/META-INF/{AL2.0,LGPL2.1}"]
