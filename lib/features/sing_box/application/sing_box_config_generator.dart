@@ -612,6 +612,9 @@ class SingBoxConfigGenerator {
           'detour': 'proxy',
         },
       {'tag': 'block-dns', 'address': 'rcode://success'},
+      // پاسخ‌دهندهٔ FakeIP: بدون هیچ رفت‌وبرگشت شبکه، آنی IP مصنوعی
+      // می‌دهد. فقط در حالت تور لازم است.
+      if (isTor) {'tag': 'fakeip-dns', 'address': 'fakeip'},
     ];
 
     final List<Map<String, dynamic>> rules = <Map<String, dynamic>>[
@@ -631,9 +634,23 @@ class SingBoxConfigGenerator {
         'domain_suffix': <String>['.local', '.lan', '.home'],
         'server': isTor ? 'block-dns' : 'bootstrap-dns',
       },
+      // تور IPv6 تحویل نمی‌دهد؛ AAAA (type 28) را خالی برگردان تا
+      // اپ‌ها منتظر پاسخی نمانند که هرگز نمی‌آید.
+      if (isTor)
+        {
+          'query_type': <int>[28],
+          'server': 'block-dns',
+        },
+      // کل کوئری‌های A از FakeIP جواب می‌گیرند: تأخیر DNS صفر می‌شود و
+      // دامنهٔ اصلی (نه IP) به SOCKS تور تحویل داده می‌شود.
+      if (isTor)
+        {
+          'query_type': <int>[1],
+          'server': 'fakeip-dns',
+        },
     ];
 
-    return <String, dynamic>{
+    final Map<String, dynamic> dns = <String, dynamic>{
       'servers': servers,
       'rules': rules,
       'final': 'proxy-dns',
@@ -642,6 +659,15 @@ class SingBoxConfigGenerator {
       'disable_cache': false,
       'reverse_mapping': true,
     };
+    if (isTor) {
+      // محدودهٔ 198.18.0.0/15 توسط auto_route وارد tun می‌شود و
+      // sing-box هنگام اتصال، fakeip را به دامنهٔ واقعی برمی‌گرداند.
+      dns['fakeip'] = <String, dynamic>{
+        'enabled': true,
+        'inet4_range': '198.18.0.0/15',
+      };
+    }
+    return dns;
   }
 
   /// آیا رشته یک IP خام است؟ (برای IP نیازی به DNS rule نیست)

@@ -47,7 +47,7 @@ class V2rayVpnService : VpnService() {
         private const val BRIDGE_MAX_RETRY = 10
 
         // حداکثر انتظار برای Bootstrapped 100% تور
-        private const val TOR_BOOTSTRAP_TIMEOUT_MS = 90_000L
+        private const val TOR_BOOTSTRAP_TIMEOUT_MS = 300_000L
     }
 
     private var tunInterface: ParcelFileDescriptor? = null
@@ -209,21 +209,27 @@ class V2rayVpnService : VpnService() {
                         Log.d(TAG, "انتظار تور تمام شد ولی سرویس در حال توقف است")
                         return@post
                     }
+                    // HARD_GATE_V1
                     val waiting = pendingTun
                     if (waiting == null) {
                         Log.w(TAG, "tun معلق موجود نیست، استارت هسته لغو شد")
                         return@post
                     }
-                    pendingTun = null
 
-                    if (ok) {
-                        Log.i(TAG, "Tor آماده است (100%)، استارت sing-box")
-                    } else {
-                        Log.w(
+                    if (!ok) {
+                        val pct = runCatching { daemon.bootstrapPercent }.getOrDefault(0)
+                        Log.e(
                             TAG,
-                            "Tor آماده نشد (${daemon.bootstrapPercent}%)، sing-box با احتمال خطا استارت می‌شود",
+                            "Tor به 100% نرسید (" + pct + "%) — استارت sing-box لغو شد",
                         )
+                        updateNotification("Tor آماده نشد (" + pct + "%) — اتصال قطع شد")
+                        setStatus(VpnStatus.DISCONNECTED)
+                        stopVpn()
+                        return@post
                     }
+
+                    pendingTun = null
+                    Log.i(TAG, "Tor آماده است (100%)، استارت sing-box")
                     updateNotification("VPN در حال اجرا")
                     launchCore(waiting, config)
                 }
