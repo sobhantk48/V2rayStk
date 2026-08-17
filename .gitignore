@@ -77,7 +77,6 @@ android/app/libs/*.aar
 
 # اسکریپت‌های موقتی پچ
 patch_*.py
-patch_*.py
 .trash_bak/
 *.bak
 *.bak2
@@ -93,18 +92,11 @@ V2rayStk_source_new.zip
 *.removed
 
 # --- cleanup rules ---
-build/
-.dart_tool/
-.trash_bak/
 # tools/ ignored, except helper patch scripts
 tools/*
 !tools/patches/
-*.bak
-*.bak2
-*.bak_*
 *.orig
 *.rej
-*.removed
 V2rayStk_source_new*.zip
 cleanup_project.py
 
