@@ -491,6 +491,7 @@ class SingBoxConfigGenerator {
           'stack': 'system',
           'endpoint_independent_nat': true,
           'sniff': true,
+          'sniff_timeout': '300ms',
           // دامنه‌ی sniff‌شده جای IP مقصد را می‌گیرد تا خودِ سرور پروکسی
           // (یا تور) نام را resolve کند. مقاوم‌ترین حالت در برابر DNS آلوده
           // و لازم برای باز شدن گوگل/یوتیوب.
@@ -542,7 +543,6 @@ class SingBoxConfigGenerator {
             },
           // ۴) در حالت Tor هیچ UDP نداریم (SOCKS5 تور UDP ندارد).
           //    پورت ۵۳ و loopback بالاتر هندل شده‌اند، پس DNS سالم می‌ماند.
-          // ۴) در حالت Tor هیچ UDP نداریم (SOCKS5 تور UDP ندارد).
           if (isTor)
             {
               'network': 'udp',

@@ -41,12 +41,26 @@ class V2rayVpnService : VpnService() {
         private const val BRIDGE_MAX_RETRY = 10
 
         // حداکثر انتظار برای Bootstrapped 100% تور
-        private const val TOR_BOOTSTRAP_TIMEOUT_MS = 300_000L
+        private const val TOR_BOOTSTRAP_TIMEOUT_MS = 90_000L
     }
 
     private var tunInterface: ParcelFileDescriptor? = null
     private var pendingTun: ParcelFileDescriptor? = null
+
+    /**
+     * fd کپی‌شده‌ای که به هسته سپرده می‌شود.
+     *  > 0  : هنوز تحویل libbox نشده، مالکش خودمانیم و باید ببندیمش
+     *  -1   : تحویل داده شده؛ libbox موقع close خودش می‌بنددش
+     */
+    @Volatile
+    private var coreTunFd: Int = -1
+
+    @Volatile
     private var stopping = false
+
+    /** جلوگیری از اجرای چندبارهٔ teardown (stopSelf → onDestroy → stopVpn) */
+    @Volatile
+    private var teardownDone = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var bridgeStarted = false
@@ -55,7 +69,7 @@ class V2rayVpnService : VpnService() {
     private val bridgeWatch = object : Runnable {
         override fun run() {
             // اگر VPN قطع شده، دیگر تلاش نکن
-            if (tunInterface == null) return
+            if (tunInterface == null || stopping) return
 
             // مرحله ۱: سلامت bridgeی که در tick قبل start شده را بسنج
             val healthy = runCatching { CommandClientBridge.hasData }.getOrDefault(false)
@@ -141,6 +155,7 @@ class V2rayVpnService : VpnService() {
         alwaysOnVpn: Boolean = false,
     ) {
         stopping = false
+        teardownDone = false
         currentAlwaysOn = alwaysOnVpn
         startForegroundSafely()
         setStatus(VpnStatus.CONNECTING)
@@ -214,19 +229,32 @@ class V2rayVpnService : VpnService() {
         }
     }
 
-    /** fd را به هسته می‌سپارد و watchdog را روشن می‌کند */
+    /**
+     * یک کپی از fd را به هسته می‌سپارد و watchdog را روشن می‌کند.
+     *
+     * چرا dup؟ اگر detachFd() روی خود tun صدا زده شود، ParcelFileDescriptor دیگر
+     * مالک fd نیست و close() ما بی‌اثر می‌شود؛ تنها مالک fd خام libbox است و اگر
+     * آن را رها نکند، رفرنس tun باز می‌ماند و آیکون VPN اندروید پاک نمی‌شود.
+     * با dup هر طرف کپی خودش را می‌بندد و tun قطعا تخریب می‌شود.
+     */
     private fun launchCore(tun: ParcelFileDescriptor, config: String) {
         try {
             tunInterface = tun
-            val fd = tun.detachFd()
+
+            val coreFd = tun.dup().detachFd()
+            coreTunFd = coreFd
+
             Log.d(
                 TAG,
-                "tun established fd=$fd mtu=$TUN_MTU addr=$TUN_ADDRESS/$TUN_PREFIX",
+                "tun established fd=$coreFd mtu=$TUN_MTU addr=$TUN_ADDRESS/$TUN_PREFIX",
             )
 
-            SingBoxBridge.start(this, fd, config)
-            setStatus(VpnStatus.CONNECTED)
+            SingBoxBridge.start(this, coreFd, config)
 
+            // از این لحظه مالکیت کپی با libbox است
+            coreTunFd = -1
+
+            setStatus(VpnStatus.CONNECTED)
             startBridgeWatch()
         } catch (e: Throwable) {
             Log.e(TAG, "launchCore failed", e)
@@ -244,23 +272,15 @@ class V2rayVpnService : VpnService() {
 
     private fun stopBridge() {
         mainHandler.removeCallbacks(bridgeWatch)
-        if (bridgeStarted) {
-            runCatching { CommandClientBridge.stop() }
-        }
-        bridgeStarted = false
         bridgeRetry = 0
+        bridgeStarted = false
+        runCatching { CommandClientBridge.stop() }
     }
 
-    /** آپدیت وضعیت + رفرش کاشی تنظیمات سریع (فیچر ۳۶) */
-    private fun setStatus(status: String) {
-        VpnState.update(status)
-        VpnTileService.requestUpdate(this)
-    }
-
-    private var currentKillSwitch: Boolean = false
     private var currentAlwaysOn: Boolean = false
+    private var currentKillSwitch: Boolean = false
 
-        private fun establishTun(killSwitch: Boolean = false): ParcelFileDescriptor? {
+    private fun establishTun(killSwitch: Boolean = false): ParcelFileDescriptor? {
         // SPLIT_PATCH_V2
         currentKillSwitch = killSwitch
         val builder = Builder()
@@ -296,7 +316,7 @@ class V2rayVpnService : VpnService() {
      * و چون پکیج خودمان بالاتر با addDisallowedApplication ثبت شده، در حالت include
      * ابتدا Builder از نو ساخته نمی‌شود بلکه پکیج خودمان از لیست allowed کنار گذاشته می‌شود.
      */
-        private fun applySplitTunnel(builder: Builder) {
+    private fun applySplitTunnel(builder: Builder) {
         // SPLIT_PATCH_V2
         // Android forbids mixing addAllowedApplication with addDisallowedApplication.
         // In INCLUDE mode we simply never add our own package to the allowed list.
@@ -331,22 +351,44 @@ class V2rayVpnService : VpnService() {
         }
     }
 
+    /**
+     * ترتیب teardown مهم است:
+     * 1) واچ‌داگ/کلاینت آمار  2) هستهٔ sing-box  3) تور  4) بستن fdها
+     * اگر fd قبل از هسته بسته شود، libbox روی fd بی‌اعتبار گیر می‌کند و رفرنس tun
+     * آزاد نمی‌شود؛ نتیجه‌اش باقی ماندن آیکون VPN در نوار وضعیت است.
+     */
+    @Synchronized
     private fun stopVpn() {
-        closeTunFd()
+        if (teardownDone) {
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            runCatching { stopSelf() }
+            return
+        }
+        teardownDone = true
         stopping = true
+
         stopBridge()
+
         runCatching { SingBoxBridge.stop() }
             .onFailure { Log.w(TAG, "SingBoxBridge.stop() failed: ${it.message}") }
+
         runCatching { torDaemon?.stop() }
             .onFailure { Log.w(TAG, "TorDaemon.stop() failed: ${it.message}") }
         torDaemon = null
-        runCatching { pendingTun?.close() }
-        pendingTun = null
-        runCatching { tunInterface?.close() }
-        tunInterface = null
+
+        // حالا هیچ‌کس روی tun کار نمی‌کند
+        closeTunFd()
+
         setStatus(VpnStatus.DISCONNECTED)
+
+        runCatching {
+            val manager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(NOTIFICATION_ID)
+        }
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         stopSelf()
+        Log.i(TAG, "stopVpn تکمیل شد؛ همهٔ رفرنس‌های tun آزاد شدند")
     }
 
     override fun onDestroy() {
@@ -374,6 +416,7 @@ class V2rayVpnService : VpnService() {
     }
 
     private fun updateNotification(text: String) {
+        if (stopping) return
         runCatching {
             val manager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -395,13 +438,14 @@ class V2rayVpnService : VpnService() {
         }
     }
 
-
+    /** بستن قطعی همهٔ fdهای مربوط به tun */
     @Synchronized
     private fun closeTunFd() {
         val pending = pendingTun
         val active = tunInterface
         pendingTun = null
         tunInterface = null
+
         if (pending != null) {
             runCatching { pending.close() }
                 .onSuccess { Log.i(TAG, "pendingTun closed") }
@@ -412,6 +456,14 @@ class V2rayVpnService : VpnService() {
                 .onSuccess { Log.i(TAG, "tunInterface closed") }
                 .onFailure { Log.w(TAG, "tunInterface close failed: ${it.message}") }
         }
-    }
 
+        // اگر هسته هرگز استارت نشد، کپی fd هنوز مال ماست و باید بسته شود
+        val orphan = coreTunFd
+        coreTunFd = -1
+        if (orphan > 0) {
+            runCatching { ParcelFileDescriptor.adoptFd(orphan).close() }
+                .onSuccess { Log.i(TAG, "coreTunFd($orphan) closed") }
+                .onFailure { Log.w(TAG, "coreTunFd close failed: ${it.message}") }
+        }
+    }
 }
