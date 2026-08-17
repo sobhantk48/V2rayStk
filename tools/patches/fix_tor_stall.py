@@ -1,4 +1,37 @@
-package com.example.v2ray_stk.vpn
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+رفع مشکل توقف Tor روی 50%:
+  1. جایگزینی timeout مطلق با stall-detection (تا وقتی درصد بالا می‌رود، صبر کن)
+  2. تغییر ترتیب: obfs4 اول (سریع‌تر)، Snowflake بعد
+  3. تشخیص مرگ پروسه tor و رد شدن سریع به پروفایل بعدی
+  4. افزودن پارامترهای torrc برای سبک کردن مرحله loading_descriptors
+  5. افزایش TOR_BOOTSTRAP_TIMEOUT_MS به 300 ثانیه
+"""
+import os
+import re
+import shutil
+import sys
+from datetime import datetime
+
+ROOT = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+VPN = os.path.join(ROOT, "android/app/src/main/kotlin/com/example/v2ray_stk/vpn")
+TOR_DAEMON = os.path.join(VPN, "TorDaemon.kt")
+VPN_SERVICE = os.path.join(VPN, "V2rayVpnService.kt")
+STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def backup(path):
+    if not os.path.exists(path):
+        print("  ! پیدا نشد: %s" % path)
+        return False
+    dst = "%s.torstall.bak_%s" % (path, STAMP)
+    shutil.copy2(path, dst)
+    print("  + بکاپ: %s" % os.path.basename(dst))
+    return True
+
+
+TOR_DAEMON_SRC = r'''package com.example.v2ray_stk.vpn
 
 import android.content.Context
 import android.util.Log
@@ -498,3 +531,61 @@ class TorDaemon(private val context: Context) {
         }
     }
 }
+'''
+
+
+def patch_tor_daemon():
+    print("[1/2] بازنویسی TorDaemon.kt")
+    if not backup(TOR_DAEMON):
+        return False
+    with open(TOR_DAEMON, "w", encoding="utf-8") as f:
+        f.write(TOR_DAEMON_SRC)
+    n = TOR_DAEMON_SRC.count("\n")
+    print("  ✓ نوشته شد (%d خط)" % n)
+    return True
+
+
+def patch_vpn_service():
+    print("[2/2] افزایش TOR_BOOTSTRAP_TIMEOUT_MS")
+    if not backup(VPN_SERVICE):
+        return False
+    with open(VPN_SERVICE, "r", encoding="utf-8") as f:
+        src = f.read()
+
+    pat = re.compile(r"(TOR_BOOTSTRAP_TIMEOUT_MS\s*=\s*)(\d[\d_]*L)")
+    m = pat.search(src)
+    if not m:
+        print("  ! ثابت TOR_BOOTSTRAP_TIMEOUT_MS پیدا نشد")
+        return False
+
+    old = m.group(2)
+    if old == "300_000L":
+        print("  = از قبل 300_000L است")
+        return True
+
+    src = pat.sub(r"\g<1>300_000L", src, count=1)
+    with open(VPN_SERVICE, "w", encoding="utf-8") as f:
+        f.write(src)
+    print("  ✓ %s -> 300_000L" % old)
+    return True
+
+
+def main():
+    print("=" * 60)
+    print("پچ رفع توقف Tor روی 50%")
+    print("ریشه پروژه: %s" % ROOT)
+    print("=" * 60)
+
+    ok = patch_tor_daemon()
+    ok = patch_vpn_service() and ok
+
+    print("=" * 60)
+    if ok:
+        print("✓ تمام شد")
+    else:
+        print("✗ با خطا تمام شد — بکاپ‌ها با پسوند .torstall.bak_%s موجودند" % STAMP)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

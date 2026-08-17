@@ -41,7 +41,7 @@ class V2rayVpnService : VpnService() {
         private const val BRIDGE_MAX_RETRY = 10
 
         // حداکثر انتظار برای Bootstrapped 100% تور
-        private const val TOR_BOOTSTRAP_TIMEOUT_MS = 230_000L
+        private const val TOR_BOOTSTRAP_TIMEOUT_MS = 300_000L
     }
 
     private var tunInterface: ParcelFileDescriptor? = null
