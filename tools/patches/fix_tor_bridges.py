@@ -1,4 +1,41 @@
-package com.example.v2ray_stk.vpn
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+fix_tor_bridges.py
+اتصال بریج‌های Tor به torrc + زنجیره fallback + تمیزکاری tor_bridges.dart
+"""
+import os
+import re
+import shutil
+import sys
+from datetime import datetime
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+TOR_DAEMON = "android/app/src/main/kotlin/com/example/v2ray_stk/vpn/TorDaemon.kt"
+VPN_SERVICE = "android/app/src/main/kotlin/com/example/v2ray_stk/vpn/V2rayVpnService.kt"
+BRIDGES_DART = "lib/core/constants/tor_bridges.dart"
+
+
+def backup(rel):
+    src = os.path.join(ROOT, rel)
+    if os.path.exists(src):
+        dst = src + ".torfix.bak_" + STAMP
+        shutil.copy2(src, dst)
+        print("  backup -> " + os.path.basename(dst))
+
+
+def write(rel, content):
+    path = os.path.join(ROOT, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("  written: " + rel + " (" + str(len(content.splitlines())) + " lines)")
+
+
+# ---------------------------------------------------------------- TorDaemon.kt
+TOR_DAEMON_KT = r'''package com.example.v2ray_stk.vpn
 
 import android.content.Context
 import android.util.Log
@@ -358,3 +395,136 @@ class TorDaemon(private val context: Context) {
         }
     }
 }
+'''
+
+# ------------------------------------------------------------- tor_bridges.dart
+BRIDGES_DART_SRC = r'''/// بریج‌های Tor برای نمایش در UI و ارسال به لایه native.
+///
+/// نکته: منبع حقیقت (source of truth) برای اتصال واقعی،
+/// فایل TorDaemon.kt است. این کلاس فقط برای نمایش و انتخاب کاربر است.
+class TorBridges {
+  const TorBridges._();
+
+  /// Snowflake روی بروکر فعلی (cdn77)
+  static const String snowflakeCdn77 =
+      'snowflake 192.0.2.3:80 2B280B23E1107BB62ABFC40DDCC8824814F80A72 '
+      'fingerprint=2B280B23E1107BB62ABFC40DDCC8824814F80A72 '
+      'url=https://1098762253.rsc.cdn77.org/ '
+      'fronts=www.cdn77.com,www.phpmyadmin.net '
+      'ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478,'
+      'stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,'
+      'stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,'
+      'stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,'
+      'stun:stun.voys.nl:3478 '
+      'utls-imitate=hellorandomizedalpn';
+
+  /// Snowflake روی بروکر قدیمی (fastly) - به عنوان fallback
+  static const String snowflakeFastly =
+      'snowflake 192.0.2.4:80 8838024498816A039FCBBAB14E6F40A0843051FA '
+      'fingerprint=8838024498816A039FCBBAB14E6F40A0843051FA '
+      'url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ '
+      'front=foursquare.com '
+      'ice=stun:stun.l.google.com:19302,stun:stun.voip.blackberry.com:3478 '
+      'utls-imitate=hellorandomizedalpn';
+
+  static const String obfs4_1 =
+      'obfs4 193.11.166.194:27015 '
+      '2D82C2E354D531A68469ADF7F878FA6060C6BACA '
+      'cert=4TLQPJrTSaDffMK7Nbao6LC7G9OW/NHkUwIdjLSS3KYf0Nv4/nQiiI8dY2TcsQx01NniOg '
+      'iat-mode=0';
+
+  static const String obfs4_2 =
+      'obfs4 209.148.46.65:443 '
+      '74FAD13168806246602538555B5521A0383A1875 '
+      'cert=ssH+9rP8dG2NLDN2XuFw63hIO/9MNNinLmxQDpVa+7kTOa9/m+tGWT1SmSYpQ9uTBGa6Hw '
+      'iat-mode=0';
+
+  /// نگه‌داشتن نام قدیمی برای سازگاری با کدهای موجود
+  static const String snowflake = snowflakeCdn77;
+
+  /// لیست همه پروفایل‌ها برای نمایش در UI
+  static List<Map<String, String>> getAllProfiles() {
+    return const [
+      {
+        'name': 'Snowflake (cdn77)',
+        'config': snowflakeCdn77,
+        'type': 'snowflake',
+      },
+      {
+        'name': 'Snowflake (fastly)',
+        'config': snowflakeFastly,
+        'type': 'snowflake',
+      },
+      {
+        'name': 'obfs4 - 1',
+        'config': obfs4_1,
+        'type': 'obfs4',
+      },
+      {
+        'name': 'obfs4 - 2',
+        'config': obfs4_2,
+        'type': 'obfs4',
+      },
+    ];
+  }
+}
+'''
+
+
+def patch_vpn_service():
+    """timeout انتظار تور را بالا می‌برد تا کل زنجیره fallback فرصت اجرا داشته باشد."""
+    path = os.path.join(ROOT, VPN_SERVICE)
+    if not os.path.exists(path):
+        print("  !! " + VPN_SERVICE + " پیدا نشد")
+        return False
+
+    with open(path, "r", encoding="utf-8") as f:
+        src = f.read()
+
+    original = src
+    # هر عدد ~90000 که در خط awaitBootstrap باشد -> 230000
+    pattern = re.compile(r"(awaitBootstrap\s*\(\s*)(90_?000|90_?000|90000)(\s*[LlF]?\s*\))")
+    src, n = pattern.subn(r"\g<1>230_000L\g<3>", src)
+
+    if n == 0:
+        # حالت جایگزین: هر awaitBootstrap با عدد
+        pattern2 = re.compile(r"(awaitBootstrap\s*\(\s*)(\d[\d_]*)(\s*[LlF]?\s*\))")
+        src, n = pattern2.subn(r"\g<1>230_000L\g<3>", src)
+
+    if n == 0:
+        print("  !! فراخوانی awaitBootstrap با عدد ثابت پیدا نشد - دستی باید تغییر کند")
+        return False
+
+    if src != original:
+        backup(VPN_SERVICE)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(src)
+        print("  patched: " + VPN_SERVICE + " (" + str(n) + " مورد awaitBootstrap -> 230_000L)")
+    return True
+
+
+def main():
+    print("=" * 62)
+    print("Tor Bridges Fix  |  root=" + ROOT)
+    print("=" * 62)
+
+    print("\n[1/3] TorDaemon.kt")
+    backup(TOR_DAEMON)
+    write(TOR_DAEMON, TOR_DAEMON_KT)
+
+    print("\n[2/3] tor_bridges.dart")
+    backup(BRIDGES_DART)
+    write(BRIDGES_DART, BRIDGES_DART_SRC)
+
+    print("\n[3/3] V2rayVpnService.kt (timeout)")
+    patch_vpn_service()
+
+    print("\n" + "=" * 62)
+    print("تمام شد. مرحله بعد:")
+    print("  flutter analyze")
+    print("=" * 62)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
