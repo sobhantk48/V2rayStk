@@ -2,7 +2,7 @@ name: v2ray_stk
 description: V2ray Stk Android client built with Flutter and Kotlin.
 publish_to: "none"
 
-version: 1.0.9+9
+version: 1.1.0+10
 environment:
   sdk: ">=3.3.0 <4.0.0"
 

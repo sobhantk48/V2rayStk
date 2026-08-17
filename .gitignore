@@ -102,3 +102,8 @@ cleanup_project.py
 
 # backup files from patch scripts
 *.bak.*
+
+# --- backups & archives ---
+*.zip
+__pycache__/
+*.pyc
