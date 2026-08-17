@@ -46,6 +46,9 @@ class V2rayVpnService : VpnService() {
         private const val BRIDGE_RETRY_MS = 3000L
         private const val BRIDGE_MAX_RETRY = 10
 
+        // فاصلهٔ ضربان سلامت پس از سالم شدن bridge
+        private const val BRIDGE_HEARTBEAT_MS = 15_000L
+
         // حداکثر انتظار برای Bootstrapped 100% تور
         private const val TOR_BOOTSTRAP_TIMEOUT_MS = 300_000L
     }
@@ -81,6 +84,8 @@ class V2rayVpnService : VpnService() {
             val healthy = runCatching { CommandClientBridge.hasData }.getOrDefault(false)
             if (healthy) {
                 Log.d(TAG, "bridge سالم است و داده دریافت می‌شود")
+                bridgeRetry = 0
+                mainHandler.postDelayed(this, BRIDGE_HEARTBEAT_MS)
                 return
             }
 
@@ -92,7 +97,8 @@ class V2rayVpnService : VpnService() {
             }
 
             if (bridgeRetry >= BRIDGE_MAX_RETRY) {
-                Log.w(TAG, "bridge پس از $BRIDGE_MAX_RETRY تلاش داده‌ای نداد، توقف تلاش")
+                Log.w(TAG, "bridge پس از $BRIDGE_MAX_RETRY تلاش داده‌ای نداد، پایش کند ادامه دارد")
+                mainHandler.postDelayed(this, BRIDGE_HEARTBEAT_MS)
                 return
             }
 
@@ -217,12 +223,12 @@ class V2rayVpnService : VpnService() {
                     }
 
                     if (!ok) {
-                        val pct = runCatching { daemon.bootstrapPercent }.getOrDefault(0)
                         Log.e(
                             TAG,
-                            "Tor به 100% نرسید (" + pct + "%) — استارت sing-box لغو شد",
+                            "Tor آماده نشد (${daemon.bootstrapPercent}%)، اتصال لغو شد",
                         )
-                        updateNotification("Tor آماده نشد (" + pct + "%) — اتصال قطع شد")
+                        runCatching { waiting.close() }
+                        updateNotification("اتصال تور ناموفق بود")
                         setStatus(VpnStatus.DISCONNECTED)
                         stopVpn()
                         return@post
@@ -261,6 +267,10 @@ class V2rayVpnService : VpnService() {
                 "tun established fd=$coreFd mtu=$TUN_MTU addr=$TUN_ADDRESS/$TUN_PREFIX",
             )
 
+            // آمار قدیمی نباید روی اتصال جدید نمایش داده شود
+            runCatching { VpnStatsStore.reset() }
+            runCatching { StatsProvider.reset() }
+
             SingBoxBridge.start(this, coreFd, config)
 
             // از این لحظه مالکیت کپی با libbox است
@@ -268,6 +278,8 @@ class V2rayVpnService : VpnService() {
 
             setStatus(VpnStatus.CONNECTED)
             startBridgeWatch()
+            runCatching { StatsProvider.start() }
+                .onFailure { Log.w(TAG, "StatsProvider.start() failed: ${it.message}") }
         } catch (e: Throwable) {
             Log.e(TAG, "launchCore failed", e)
             setStatus(VpnStatus.DISCONNECTED)
@@ -379,6 +391,9 @@ class V2rayVpnService : VpnService() {
         teardownDone = true
         stopping = true
 
+        runCatching { StatsProvider.stop() }
+            .onFailure { Log.w(TAG, "StatsProvider.stop() failed: ${it.message}") }
+
         stopBridge()
 
         runCatching { SingBoxBridge.stop() }
@@ -392,6 +407,9 @@ class V2rayVpnService : VpnService() {
         closeTunFd()
 
         setStatus(VpnStatus.DISCONNECTED)
+
+        runCatching { StatsProvider.reset() }
+        runCatching { VpnStatsStore.reset() }
 
         runCatching {
             val manager =

@@ -1,96 +1,130 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Hard Gate برای Tor:
-1) تایم‌اوت بوت‌استرپ: 90_000L -> 300_000L
-2) اگر Tor به 100% نرسید، sing-box استارت نشود و اتصال تمیز قطع شود
+Hard Gate تور - نسخهٔ خط‌محور (مقاوم به تفاوت متن)
+
+منطق: در بلوک انتظار بوت‌استرپ، از خط «if (ok)» تا خط
+«launchCore(waiting, config)» را پیدا می‌کند و کل آن را با
+گیت سخت جایگزین می‌کند. به متن دقیق پیام‌ها وابسته نیست.
 """
-import re, shutil, sys
-from datetime import datetime
-from pathlib import Path
+import io
+import os
+import sys
+import datetime
 
-SRC = Path("android/app/src/main/kotlin/com/example/v2ray_stk/vpn/V2rayVpnService.kt")
+TARGET = os.path.join(
+    "android", "app", "src", "main", "kotlin",
+    "com", "example", "v2ray_stk", "vpn", "V2rayVpnService.kt",
+)
 
-def main():
-    if not SRC.exists():
-        print(f"[x] پیدا نشد: {SRC}"); sys.exit(1)
-    text = SRC.read_text(encoding="utf-8")
-    orig = text
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    bak = SRC.with_suffix(SRC.suffix + f".hardgate.bak_{ts}")
-    shutil.copy2(SRC, bak)
-    print(f"== بکاپ: {bak}")
+MARKER = "اتصال تور ناموفق بود"
 
-    # --- 1) تایم‌اوت ---
-    if "TOR_BOOTSTRAP_TIMEOUT_MS = 300_000L" in text:
-        print("   [skip] تایم‌اوت قبلا 300s بود")
-    else:
-        new, n = re.subn(
-            r"(TOR_BOOTSTRAP_TIMEOUT_MS\s*=\s*)90_000L",
-            r"\g<1>300_000L", text)
-        if n:
-            text = new
-            print("   [ok] تایم‌اوت 90s -> 300s")
-        else:
-            print("   [!] الگوی تایم‌اوت پیدا نشد")
+if not os.path.isfile(TARGET):
+    print("[FATAL] فایل پیدا نشد: " + TARGET)
+    sys.exit(1)
 
-    # --- 2) hard gate ---
-    if "HARD_GATE_V1" in text:
-        print("   [skip] hard gate قبلا اعمال شده")
-    else:
-        old_block = """                    val waiting = pendingTun
-                    if (waiting == null) {
-                        Log.w(TAG, "tun معلق موجود نیست، استارت هسته لغو شد")
-                        return@post
-                    }
-                    pendingTun = null
+with io.open(TARGET, "r", encoding="utf-8") as fh:
+    lines = fh.readlines()
 
-                    if (ok) {
-                        Log.i(TAG, "Tor آماده است (100%)، استارت sing-box")
-                    } else {
-                        Log.w(
-                            TAG,
-                            "Tor آماده نشد (${daemon.bootstrapPercent}%)، sing-box با احتمال خطا استارت می‌شود",
-                        )
-                    }
-                    updateNotification("VPN در حال اجرا")
-                    launchCore(waiting, config)"""
+joined = "".join(lines)
 
-        new_block = """                    // HARD_GATE_V1
-                    val waiting = pendingTun
-                    if (waiting == null) {
-                        Log.w(TAG, "tun معلق موجود نیست، استارت هسته لغو شد")
-                        return@post
-                    }
+if MARKER in joined and "return@post" in joined:
+    print("[SKIP] گیت سخت تور از قبل وجود دارد، تغییری لازم نیست.")
+    sys.exit(0)
 
-                    if (!ok) {
-                        val pct = runCatching { daemon.bootstrapPercent }.getOrDefault(0)
-                        Log.e(
-                            TAG,
-                            "Tor به 100% نرسید (" + pct + "%) — استارت sing-box لغو شد",
-                        )
-                        updateNotification("Tor آماده نشد (" + pct + "%) — اتصال قطع شد")
-                        setStatus(VpnStatus.DISCONNECTED)
-                        stopVpn()
-                        return@post
-                    }
 
-                    pendingTun = null
-                    Log.i(TAG, "Tor آماده است (100%)، استارت sing-box")
-                    updateNotification("VPN در حال اجرا")
-                    launchCore(waiting, config)"""
+def dump(a, b, tag):
+    print("---- " + tag + " ----")
+    lo = max(0, a)
+    hi = min(len(lines), b)
+    for i in range(lo, hi):
+        print("%4d| %s" % (i + 1, lines[i].rstrip("\n")))
+    print("---- end ----")
 
-        if old_block in text:
-            text = text.replace(old_block, new_block, 1)
-            print("   [ok] hard gate اعمال شد")
-        else:
-            print("   [x] بلاک اصلی پیدا نشد — فایل دستکاری شده؟")
-            sys.exit(2)
 
-    if text == orig:
-        print("== تغییری لازم نبود"); return
-    SRC.write_text(text, encoding="utf-8")
-    print(f"== نوشته شد: {SRC}")
+# پیدا کردن خط launchCore(waiting, config)
+end_idx = -1
+for i, ln in enumerate(lines):
+    if "launchCore(waiting" in ln:
+        end_idx = i
+        break
 
-if __name__ == "__main__":
-    main()
+if end_idx < 0:
+    print("[FATAL] خط launchCore(waiting, config) پیدا نشد.")
+    dump(185, 245, "ناحیهٔ مشکوک")
+    sys.exit(2)
+
+# عقب‌گرد تا خط if (ok)
+start_idx = -1
+for i in range(end_idx, max(-1, end_idx - 40), -1):
+    stripped = lines[i].strip()
+    if stripped.startswith("if (ok)") or stripped.startswith("if (!ok)"):
+        start_idx = i
+        break
+
+if start_idx < 0:
+    print("[FATAL] خط «if (ok)» در ۴۰ خط قبل از launchCore پیدا نشد.")
+    dump(end_idx - 40, end_idx + 5, "ناحیهٔ واقعی فایل")
+    sys.exit(3)
+
+print("[FOUND] بلوک هدف: خط " + str(start_idx + 1) + " تا " + str(end_idx + 1))
+dump(start_idx, end_idx + 1, "متن فعلی (قبل از تغییر)")
+
+old_block = lines[start_idx:end_idx + 1]
+old_text = "".join(old_block)
+
+if "launchCore(waiting" not in old_text:
+    print("[FATAL] بلوک استخراج‌شده معتبر نیست.")
+    sys.exit(4)
+
+# تشخیص تو رفتگی از خود خط if
+indent = lines[start_idx][: len(lines[start_idx]) - len(lines[start_idx].lstrip())]
+u = indent + "    "
+
+new_block = [
+    indent + "if (!ok) {\n",
+    u + "Log.e(\n",
+    u + "    TAG,\n",
+    u + "    \"Tor آماده نشد (${daemon.bootstrapPercent}%)، اتصال لغو شد\",\n",
+    u + ")\n",
+    u + "runCatching { waiting.close() }\n",
+    u + "updateNotification(\"" + MARKER + "\")\n",
+    u + "setStatus(VpnStatus.DISCONNECTED)\n",
+    u + "stopVpn()\n",
+    u + "return@post\n",
+    indent + "}\n",
+    "\n",
+    indent + "Log.i(TAG, \"Tor آماده است (100%)، استارت sing-box\")\n",
+    indent + "updateNotification(\"VPN در حال اجرا\")\n",
+    indent + "launchCore(waiting, config)\n",
+]
+
+stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+backup = TARGET + ".hardgate.bak_" + stamp
+with io.open(backup, "w", encoding="utf-8") as fh:
+    fh.write(joined)
+print("[BACKUP] " + backup)
+
+new_lines = lines[:start_idx] + new_block + lines[end_idx + 1:]
+
+with io.open(TARGET, "w", encoding="utf-8") as fh:
+    fh.write("".join(new_lines))
+
+print("[WRITE] " + TARGET)
+print("")
+
+lines = new_lines
+dump(start_idx - 4, start_idx + len(new_block) + 4, "متن جدید (بعد از تغییر)")
+
+# بررسی تعادل آکولاد کل فایل
+text = "".join(new_lines)
+opens = text.count("{")
+closes = text.count("}")
+print("")
+print("آکولاد باز: " + str(opens) + " | بسته: " + str(closes))
+if opens != closes:
+    print("[هشدار] آکولادها نامتعادل است. بکاپ:")
+    print("  cp '" + backup + "' '" + TARGET + "'")
+    sys.exit(5)
+
+print("[OK] گیت سخت تور اعمال شد.")
