@@ -59,14 +59,16 @@ jobs:
       - name: Run unit tests
         run: flutter test --reporter compact
 
-      # مهم: --split-per-abi استفاده نمی‌شود.
-      # ABIها در android/app/build.gradle با ndk.abiFilters قفل شده‌اند
-      # (arm64-v8a + armeabi-v7a). اضافه کردن --split-per-abi باعث خطای
-      # "Conflicting configuration" می‌شود.
+      # ABI policy: فقط arm64-v8a
+      #  1) android/app/build.gradle -> ndk { abiFilters "arm64-v8a" }
+      #  2) اینجا -> --target-platform android-arm64
+      # هر دو لازم است: abiFilters فقط بسته‌بندی را فیلتر می‌کند،
+      # ولی موتور فلاتر بدون --target-platform برای هر سه ABI ساخته می‌شود.
+      # --split-per-abi استفاده نمی‌شود (خطای Conflicting configuration).
       - name: Build release APK
         run: |
           set -o pipefail
-          flutter build apk --release --verbose 2>&1 | tee build-log.txt
+          flutter build apk --release --target-platform android-arm64 --verbose 2>&1 | tee build-log.txt
           status=${PIPESTATUS[0]}
           echo "build exit code: $status"
           exit $status
@@ -101,8 +103,30 @@ jobs:
           apk=build/app/outputs/flutter-apk/app-release.apk
           echo "--- lib/ entries ---"
           unzip -l "$apk" | grep -E "lib/" || echo "no native libs"
+
+          echo "--- ABI list ---"
+          abis=$(unzip -l "$apk" | grep -oE "lib/[^/]+/" | sort -u | sed 's#lib/##; s#/##')
+          echo "$abis"
+
+          bad=$(echo "$abis" | grep -vE '^arm64-v8a$' | grep -v '^$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::unexpected ABI(s) in APK: $(echo $bad | tr '\n' ' ')"
+            exit 1
+          fi
+
+          if ! echo "$abis" | grep -qx 'arm64-v8a'; then
+            echo "::error::arm64-v8a native libs missing from APK"
+            exit 1
+          fi
+
           echo "--- libbox.so ---"
-          unzip -l "$apk" | grep -E "libbox\.so" || echo "::warning::libbox.so not found in APK"
+          unzip -l "$apk" | grep -E "libbox\.so" || {
+            echo "::error::libbox.so not found in APK"
+            exit 1
+          }
+
+          echo "--- size ---"
+          ls -lh "$apk"
 
       - name: Upload APK
         if: success()
