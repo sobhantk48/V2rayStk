@@ -28,13 +28,27 @@ jobs:
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
           java -version
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
+      # NO_FLUTTER_ACTION_V1
+      - name: Install Flutter (manual)
+        run: |
+          set -euo pipefail
+          FV="${FLUTTER_VERSION}"
+          SDK="$HOME/flutter"
+          TB="flutter_linux_${FV}-stable.tar.xz"
+          URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/${TB}"
+          echo "try tarball: $URL"
+          if curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors -o "/tmp/${TB}" "$URL"; then
+            tar -xf "/tmp/${TB}" -C "$HOME"
+          else
+            echo "tarball failed -> git clone fallback"
+            git clone --depth 1 --branch "$FV" https://github.com/flutter/flutter.git "$SDK"
+          fi
+          echo "$SDK/bin" >> "$GITHUB_PATH"
+          export PATH="$SDK/bin:$PATH"
+          git config --global --add safe.directory "$SDK"
+          flutter --version
+          flutter config --no-analytics || true
+          flutter precache --android
       - name: Verify AAR in repo
         run: |
           set -euo pipefail
