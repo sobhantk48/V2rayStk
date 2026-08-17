@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go 1.22.9 (locked)
         uses: actions/setup-go@v5
@@ -63,7 +63,7 @@ jobs:
             ./experimental/libbox
 
       - name: Upload AAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: libbox-with-tor-arm64
           path: libbox.aar
