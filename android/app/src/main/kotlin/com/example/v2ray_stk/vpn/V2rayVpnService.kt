@@ -16,6 +16,12 @@ import kotlin.concurrent.thread
 import androidx.core.app.NotificationCompat
 
 class V2rayVpnService : VpnService() {
+    private fun setStatus(newStatus: String) {
+        if (VpnState.status == newStatus) return
+        VpnState.update(newStatus)
+        android.util.Log.i(TAG, "status -> " + newStatus)
+    }
+
     private var torDaemon: TorDaemon? = null
 
     companion object {
