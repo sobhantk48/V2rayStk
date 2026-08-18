@@ -4,7 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../l10n/strings.dart';
 
 /// اسکنر QR برای واردات کانفیگ.
-/// با Navigator.pop مقدار متنی خوانده‌شده را برمی‌گرداند.
+/// با Navigator.pop مقدار متنی خوانده‌شده (trim شده) را برمی‌گرداند.
 class QrScannerScreen extends StatefulWidget {
   const QrScannerScreen({super.key});
 
@@ -24,10 +24,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   @override
   void initState() {
     super.initState();
-    unawaitedStart();
-  }
-
-  void unawaitedStart() {
+    // در mobile_scanner 5.x با controller دستی، شروع دوربین بر عهده‌ی ماست.
     _controller.start().catchError((Object _) {});
   }
 
@@ -38,7 +35,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   }
 
   void _onDetect(BarcodeCapture capture) {
-    if (_handled) {
+    if (_handled || !mounted) {
       return;
     }
     for (final Barcode barcode in capture.barcodes) {
@@ -48,6 +45,17 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         Navigator.of(context).pop(raw.trim());
         return;
       }
+    }
+  }
+
+  Future<void> _toggleTorch() async {
+    try {
+      await _controller.toggleTorch();
+      if (mounted) {
+        setState(() => _torchOn = !_torchOn);
+      }
+    } catch (_) {
+      // بعضی دستگاه‌ها فلاش ندارند؛ بی‌صدا رد می‌شویم.
     }
   }
 
@@ -64,12 +72,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           IconButton(
             tooltip: strings.torch,
             icon: Icon(_torchOn ? Icons.flash_on : Icons.flash_off),
-            onPressed: () async {
-              await _controller.toggleTorch();
-              if (mounted) {
-                setState(() => _torchOn = !_torchOn);
-              }
-            },
+            onPressed: _toggleTorch,
           ),
           IconButton(
             tooltip: strings.switchCamera,
@@ -87,7 +90,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
             errorBuilder: (
               BuildContext context,
               MobileScannerException error,
-              Widget? child,
             ) {
               return _ScannerError(
                 message:
@@ -140,8 +142,11 @@ class _ScannerError extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              const Icon(Icons.no_photography_outlined,
-                  color: Colors.white54, size: 56),
+              const Icon(
+                Icons.no_photography_outlined,
+                color: Colors.white54,
+                size: 56,
+              ),
               const SizedBox(height: 16),
               Text(
                 message,

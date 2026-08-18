@@ -10,6 +10,7 @@ import '../application/profile_providers.dart';
 import '../application/latency_providers.dart';
 import '../domain/profile.dart';
 import 'ping_results_sheet.dart';
+import '../../scanner/presentation/qr_scanner_screen.dart';
 
 class ProfilesScreen extends ConsumerStatefulWidget {
   const ProfilesScreen({super.key});
@@ -91,6 +92,11 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Scan QR / اسکن کیوآر',
+                onPressed: _scanQrAndImport,
+                icon: const Icon(Icons.qr_code_scanner),
+              ),
               IconButton(
                 tooltip: 'Groups',
                 onPressed: () => context.push('/groups'),
@@ -377,6 +383,23 @@ class _ProfilesScreenState extends ConsumerState<ProfilesScreen> {
     if (input != null) {
       await _importText(input);
     }
+  }
+
+  Future<void> _scanQrAndImport() async {
+    final String? raw = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (BuildContext context) => const QrScannerScreen(),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    final String text = (raw ?? '').trim();
+    if (text.isEmpty) {
+      _toast('QR code is empty. / کیوآر خالی است.');
+      return;
+    }
+    await _importText(text);
   }
 
   Future<void> _importFromClipboard() async {
