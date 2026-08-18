@@ -243,9 +243,7 @@ class MainActivity : FlutterFragmentActivity() {
         // وضعیت UI را فوراً هماهنگ کن تا کاربر منتظر نماند.
         mainHandler.postDelayed({
             runCatching {
-                if (VpnState.status != VpnStatus.DISCONNECTED.name &&
-                    VpnState.status != "disconnected"
-                ) {
+                if (VpnState.status != VpnStatus.DISCONNECTED) {
                     V2rayVpnService.requestStop(applicationContext)
                 }
             }
