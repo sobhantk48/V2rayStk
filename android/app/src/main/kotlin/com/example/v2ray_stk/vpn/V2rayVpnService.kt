@@ -312,8 +312,12 @@ class V2rayVpnService : VpnService() {
 
             SingBoxBridge.start(this, coreFd, config)
 
-            // از این لحظه مالکیت کپی با libbox است
-            coreTunFd = -1
+            // FIX_VPN_ICON_STUCK_V1
+            // libbox فقط عدد fd را از tunFdProvider می‌خواند و داخل Go یک dup
+            // مستقل می‌سازد. پس مالکیت coreFd هرگز منتقل نمی‌شود و اگر آن را
+            // رها کنیم یک fd باز روی tun باقی می‌ماند، سشن VPN از دید netd
+            // زنده می‌ماند و آیکون کلید در نوار وضعیت پاک نمی‌شود.
+            // coreTunFd عمداً نگه داشته می‌شود تا closeTunFd() آن را ببندد.
 
             setStatus(VpnStatus.CONNECTED)
             startBridgeWatch()
@@ -508,6 +512,17 @@ class V2rayVpnService : VpnService() {
         super.onDestroy()
     }
 
+    /**
+     * FIX_VPN_ICON_STUCK_V1
+     * سیستم (پروسهٔ system/1000) با اکشن android.net.VpnService به این سرویس
+     * bind می‌کند. تا وقتی همهٔ fdهای tun باز باشند این binding رها نمی‌شود و
+     * onDestroy هرگز صدا زده نمی‌شود. این لاگ برای تأیید رهاشدن binding است.
+     */
+    override fun onUnbind(intent: Intent?): Boolean {
+        Log.i(TAG, "onUnbind action=" + (intent?.action ?: "null") + " — binding سیستم آزاد شد")
+        return super.onUnbind(intent)
+    }
+
     override fun onRevoke() {
         Log.w(TAG, "onRevoke — اجازهٔ VPN توسط سیستم لغو شد")
         runCatching { VpnPrefs.clearKeepLast(this) }
@@ -571,13 +586,18 @@ class V2rayVpnService : VpnService() {
                 .onFailure { Log.w(TAG, "tunInterface close failed: ${it.message}") }
         }
 
-        // اگر هسته هرگز استارت نشد، کپی fd هنوز مال ماست و باید بسته شود
+        // FIX_VPN_ICON_STUCK_V1
+        // کپی fd همیشه مال ماست (چه هسته استارت شده باشد چه نه)، چون libbox
+        // dup داخلی خودش را می‌بندد نه این یکی را. باید بی‌قیدوشرط بسته شود.
         val orphan = coreTunFd
         coreTunFd = -1
         if (orphan > 0) {
             runCatching { ParcelFileDescriptor.adoptFd(orphan).close() }
                 .onSuccess { Log.i(TAG, "coreTunFd($orphan) closed") }
                 .onFailure { Log.w(TAG, "coreTunFd close failed: ${it.message}") }
+        } else {
+            Log.d(TAG, "coreTunFd چیزی برای بستن نداشت (orphan=$orphan)")
         }
+        Log.i(TAG, "closeTunFd کامل شد؛ هیچ fd بازی روی tun باقی نماند")
     }
 }
