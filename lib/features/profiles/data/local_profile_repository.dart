@@ -9,6 +9,51 @@ class LocalProfileRepository implements ProfileRepository {
 
   final LocalStorageService _storage;
 
+  /// اثرانگشت یکتای یک پروفایل برای تشخیص تکراری بودن.
+  /// id عمداً لحاظ نمی‌شود؛ چون هر بار واردات یک id تازه می‌سازد.
+  static String fingerprintOf(Profile profile) {
+    final Map<String, dynamic> json = profile.toJson();
+
+    String pick(List<String> keys) {
+      for (final String key in keys) {
+        final dynamic value = json[key];
+        if (value != null) {
+          final String text = value.toString().trim();
+          if (text.isNotEmpty && text != 'null') {
+            return text.toLowerCase();
+          }
+        }
+      }
+      return '';
+    }
+
+    final String type = pick(<String>['type', 'protocol']);
+    final String host = pick(<String>['server', 'address', 'host', 'serverAddress']);
+    final String port = pick(<String>['port', 'serverPort']);
+    final String secret = pick(<String>[
+      'uuid',
+      'id',
+      'password',
+      'privateKey',
+      'psk',
+      'token',
+    ]);
+    final String extra = pick(<String>['path', 'serviceName', 'publicKey']);
+
+    final String base = '$type|$host|$port|$secret|$extra';
+
+    // اگر هیچ فیلد معناداری نبود، به لینک خام یا کل JSON برمی‌گردیم.
+    if (base.replaceAll('|', '').isEmpty) {
+      final String raw = pick(<String>['rawLink', 'link', 'uri', 'config']);
+      if (raw.isNotEmpty) {
+        return raw;
+      }
+      return json.toString();
+    }
+
+    return base;
+  }
+
   @override
   Future<List<Profile>> getProfiles() async {
     final List<Map<String, dynamic>> items =
@@ -27,6 +72,13 @@ class LocalProfileRepository implements ProfileRepository {
   @override
   Future<void> addProfile(Profile profile) async {
     final List<Profile> profiles = await getProfiles();
+
+    final Set<String> seen = profiles.map(fingerprintOf).toSet();
+    if (seen.contains(fingerprintOf(profile))) {
+      // تکراری است؛ چیزی اضافه نمی‌کنیم.
+      return;
+    }
+
     profiles.add(profile);
     await _persist(profiles);
   }
@@ -38,7 +90,21 @@ class LocalProfileRepository implements ProfileRepository {
     }
 
     final List<Profile> profiles = await getProfiles();
-    profiles.addAll(newProfiles);
+    final Set<String> seen = profiles.map(fingerprintOf).toSet();
+
+    final List<Profile> accepted = <Profile>[];
+    for (final Profile item in newProfiles) {
+      final String key = fingerprintOf(item);
+      if (seen.add(key)) {
+        accepted.add(item);
+      }
+    }
+
+    if (accepted.isEmpty) {
+      return;
+    }
+
+    profiles.addAll(accepted);
     await _persist(profiles);
   }
 
@@ -114,5 +180,29 @@ class LocalProfileRepository implements ProfileRepository {
           )
           .toList(),
     );
+  }
+
+  /// حذف تکراری‌های موجود در دیتای فعلی (یک‌بار پاک‌سازی).
+  /// تعداد موارد حذف‌شده را برمی‌گرداند.
+  Future<int> removeDuplicates() async {
+    final List<Profile> profiles = await getProfiles();
+    if (profiles.length < 2) {
+      return 0;
+    }
+
+    final Set<String> seen = <String>{};
+    final List<Profile> kept = <Profile>[];
+
+    for (final Profile item in profiles) {
+      if (seen.add(fingerprintOf(item))) {
+        kept.add(item);
+      }
+    }
+
+    final int removed = profiles.length - kept.length;
+    if (removed > 0) {
+      await _persist(kept);
+    }
+    return removed;
   }
 }

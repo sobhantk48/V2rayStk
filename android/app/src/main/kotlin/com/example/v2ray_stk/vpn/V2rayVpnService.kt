@@ -25,6 +25,33 @@ class V2rayVpnService : VpnService() {
     private var torDaemon: TorDaemon? = null
 
     companion object {
+
+        /** ارجاع ضعیف به نمونه‌ی در حال اجرا برای توقف اضطراری. */
+        @JvmStatic
+        @Volatile
+        var running: V2rayVpnService? = null
+
+        /**
+         * توقف مستقیم سرویس بدون عبور از Intent.
+         * مسیر پشتیبان برای زمانی که startService در پس‌زمینه اجازه ندارد.
+         */
+        @JvmStatic
+        fun requestStop(context: android.content.Context) {
+            val svc = running
+            if (svc != null) {
+                runCatching { svc.stopVpn() }
+                runCatching { svc.stopForeground(true) }
+                runCatching { svc.stopSelf() }
+                return
+            }
+            runCatching {
+                context.startService(
+                    android.content.Intent(context, V2rayVpnService::class.java)
+                        .apply { action = ACTION_DISCONNECT }
+                )
+            }
+        }
+
         const val ACTION_CONNECT = "com.v2ray.stk.CONNECT"
         const val ACTION_DISCONNECT = "com.v2ray.stk.DISCONNECT"
         const val EXTRA_CONFIG = "extra_config"
@@ -70,6 +97,10 @@ class V2rayVpnService : VpnService() {
     /** جلوگیری از اجرای چندبارهٔ teardown (stopSelf → onDestroy → stopVpn) */
     @Volatile
     private var teardownDone = false
+
+    /** true یعنی از onDestroy آمده‌ایم؛ نباید دوباره stopSelf بزنیم */
+    @Volatile
+    private var inDestroy = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var bridgeStarted = false
@@ -119,6 +150,7 @@ class V2rayVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        running = this
         // لاگ‌ها باید قبل از هر خط هسته روی دیسک آماده باشند
         runCatching { LogStore.init(applicationContext) }
     }
@@ -382,10 +414,10 @@ class V2rayVpnService : VpnService() {
      * آزاد نمی‌شود؛ نتیجه‌اش باقی ماندن آیکون VPN در نوار وضعیت است.
      */
     @Synchronized
-    private fun stopVpn() {
+    private fun stopVpn(fromDestroy: Boolean = false) {
         if (teardownDone) {
             runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-            runCatching { stopSelf() }
+            if (!fromDestroy && !inDestroy) runCatching { stopSelf() }
             return
         }
         teardownDone = true
@@ -417,12 +449,16 @@ class V2rayVpnService : VpnService() {
             manager.cancel(NOTIFICATION_ID)
         }
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-        stopSelf()
+        if (!fromDestroy && !inDestroy) runCatching { stopSelf() }
         Log.i(TAG, "stopVpn تکمیل شد؛ همهٔ رفرنس‌های tun آزاد شدند")
     }
 
     override fun onDestroy() {
-        stopVpn()
+        // علامت‌گذاری مسیر تخریب تا stopVpn دوباره stopSelf نزند
+        inDestroy = true
+        if (running === this) running = null
+        runCatching { stopVpn(fromDestroy = true) }
+            .onFailure { Log.w(TAG, "onDestroy/stopVpn failed: ${it.message}") }
         super.onDestroy()
     }
 
