@@ -18,6 +18,7 @@ class AdminSettings {
     this.autoServerSelection = true,
     this.dynamicRouting = false,
     this.multiHop = false,
+    this.multiHopIds = const <String>[],
     this.lwoEnabled = false,
     this.nordLynxEnabled = false,
     this.dnsMode = 'doh',
@@ -58,6 +59,10 @@ class AdminSettings {
   final bool autoServerSelection;
   final bool dynamicRouting;
   final bool multiHop;
+
+  /// شناسهٔ پروفایل‌هایی که به‌عنوان هاپ میانی زنجیره می‌شوند.
+  /// ترتیب لیست = ترتیب زنجیره از نزدیک‌ترین پله به سرور نهایی.
+  final List<String> multiHopIds;
   final bool lwoEnabled;
   final bool nordLynxEnabled;
 
@@ -106,6 +111,7 @@ class AdminSettings {
     bool? autoServerSelection,
     bool? dynamicRouting,
     bool? multiHop,
+    List<String>? multiHopIds,
     bool? lwoEnabled,
     bool? nordLynxEnabled,
     String? dnsMode,
@@ -145,6 +151,7 @@ class AdminSettings {
       autoServerSelection: autoServerSelection ?? this.autoServerSelection,
       dynamicRouting: dynamicRouting ?? this.dynamicRouting,
       multiHop: multiHop ?? this.multiHop,
+      multiHopIds: multiHopIds ?? this.multiHopIds,
       lwoEnabled: lwoEnabled ?? this.lwoEnabled,
       nordLynxEnabled: nordLynxEnabled ?? this.nordLynxEnabled,
       dnsMode: dnsMode ?? this.dnsMode,
@@ -189,6 +196,7 @@ class AdminSettings {
         'autoServerSelection': autoServerSelection,
         'dynamicRouting': dynamicRouting,
         'multiHop': multiHop,
+        'multiHopIds': multiHopIds,
         'lwoEnabled': lwoEnabled,
         'nordLynxEnabled': nordLynxEnabled,
         'dnsMode': dnsMode,
@@ -223,6 +231,20 @@ class AdminSettings {
       return value is String && value.isNotEmpty ? value : fallback;
     }
 
+    List<String> stringListOf(String key) {
+      final Object? value = json[key];
+      if (value is! List) {
+        return const <String>[];
+      }
+      final List<String> out = <String>[];
+      for (final Object? item in value) {
+        if (item is String && item.trim().isNotEmpty) {
+          out.add(item.trim());
+        }
+      }
+      return out;
+    }
+
     int intOf(String key, int fallback) {
       final Object? value = json[key];
       if (value is int) {
@@ -251,6 +273,7 @@ class AdminSettings {
       autoServerSelection: boolOf('autoServerSelection', true),
       dynamicRouting: boolOf('dynamicRouting', false),
       multiHop: boolOf('multiHop', false),
+      multiHopIds: stringListOf('multiHopIds'),
       lwoEnabled: boolOf('lwoEnabled', false),
       nordLynxEnabled: boolOf('nordLynxEnabled', false),
       dnsMode: stringOf('dnsMode', 'doh'),

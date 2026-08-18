@@ -61,7 +61,7 @@ class VpnController extends Notifier<VpnConnectionState> {
       final AdminSettings settings = await _reader.read();
       final Profile profile = await _resolveActiveProfile(settings);
       await _service.connect(
-        _buildConfigJson(profile, settings),
+        await _buildConfigJson(profile, settings),
         torEnabled: settings.torEnabled,
         killSwitch: settings.killSwitch,
         alwaysOnVpn: settings.alwaysOnVpn,
@@ -91,7 +91,7 @@ class VpnController extends Notifier<VpnConnectionState> {
     try {
       final AdminSettings settings = await _reader.read();
       await _service.connect(
-        _buildConfigJson(profile, settings),
+        await _buildConfigJson(profile, settings),
         torEnabled: settings.torEnabled,
         killSwitch: settings.killSwitch,
         alwaysOnVpn: settings.alwaysOnVpn,
@@ -130,13 +130,49 @@ class VpnController extends Notifier<VpnConnectionState> {
     );
   }
 
-  String _buildConfigJson(Profile profile, AdminSettings settings) {
-    final SingBoxConfig config = _generator.generate(profile);
+  Future<String> _buildConfigJson(
+    Profile profile,
+    AdminSettings settings,
+  ) async {
+    final List<Profile> hops = await _resolveHopProfiles(profile, settings);
+    final SingBoxConfig config = hops.isEmpty
+        ? _generator.generate(profile)
+        : _generator.generateChain(profile, hops);
     final Map<String, dynamic> patched = _patcher.apply(
       config.value,
       settings,
     );
     return jsonEncode(patched);
+  }
+
+  /// پروفایل هاپ‌ها را بر اساس ترتیب multiHopIds برمی‌گرداند.
+  /// اگر Multi-Hop خاموش باشد یا Tor روشن باشد، لیست خالی است.
+  Future<List<Profile>> _resolveHopProfiles(
+    Profile profile,
+    AdminSettings settings,
+  ) async {
+    if (!settings.multiHop || settings.multiHopIds.isEmpty) {
+      return const <Profile>[];
+    }
+    if (settings.torEnabled) {
+      return const <Profile>[];
+    }
+    try {
+      final List<Profile> all = await ref.read(profilesProvider.future);
+      final List<Profile> out = <Profile>[];
+      for (final String id in settings.multiHopIds) {
+        for (final Profile candidate in all) {
+          if (candidate.id == id && candidate.id != profile.id) {
+            out.add(candidate);
+            break;
+          }
+        }
+      }
+      return out;
+    } catch (_) {
+      // اگر پروفایل‌ها خوانده نشدند، اتصال ساده بهتر از قطع اتصال است.
+      return const <Profile>[];
+    }
   }
 
   Object? _lastError;

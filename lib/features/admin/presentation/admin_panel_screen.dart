@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../l10n/strings.dart';
 import '../data/admin_service.dart';
 import '../domain/admin_settings.dart';
+import 'multi_hop_picker.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
@@ -118,6 +119,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           value: s.multiHop,
           onChanged: (bool v) => _update(s.copyWith(multiHop: v)),
         ),
+        if (s.multiHop)
+          MultiHopPicker(
+            selectedIds: s.multiHopIds,
+            onChanged: (List<String> ids) =>
+                _update(s.copyWith(multiHopIds: ids)),
+          ),
         SwitchListTile(
           title: Text(strings.dynamicRouting),
           value: s.dynamicRouting,

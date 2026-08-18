@@ -57,6 +57,50 @@ class SingBoxConfigGenerator {
     }
   }
 
+  /// نسخهٔ زنجیره‌ای generate: پروفایل اصلی به‌عنوان exit و بقیه به‌عنوان هاپ.
+  SingBoxConfig generateChain(Profile profile, List<Profile> hops) {
+    final bool isTor = _isTorProfile(profile);
+    try {
+      final Map<String, dynamic> head = _outboundOf(profile, 'proxy');
+      final List<Map<String, dynamic>> hopOutbounds = <Map<String, dynamic>>[];
+
+      if (!isTor) {
+        for (int i = 0; i < hops.length; i++) {
+          final Profile hop = hops[i];
+          if (hop.id == profile.id) {
+            continue;
+          }
+          if (_isTorProfile(hop)) {
+            continue;
+          }
+          hopOutbounds.add(_outboundOf(hop, 'hop-$i'));
+        }
+      }
+
+      return SingBoxConfig(
+        _wrap(head, isTor: isTor, hops: hopOutbounds),
+      );
+    } catch (e) {
+      throw SingBoxConfigException('خطا در تولید کانفیگ زنجیره‌ای: $e');
+    }
+  }
+
+  /// یک پروفایل را فقط به outbound تبدیل می‌کند (بدون wrap کردن).
+  Map<String, dynamic> _outboundOf(Profile profile, String tag) {
+    final Map<String, dynamic>? json = _tryDecodeJsonObject(profile.rawConfig);
+    if (json != null) {
+      if (_looksLikeSingBoxConfig(json)) {
+        final Map<String, dynamic> out = _adoptSingBoxConfig(json);
+        out['tag'] = tag;
+        return out;
+      }
+      return _v2rayConverter.convert(json, tag: tag);
+    }
+    final Map<String, dynamic> out = _buildOutboundFromUri(profile);
+    out['tag'] = tag;
+    return out;
+  }
+
   Map<String, dynamic> _buildOutboundFromUri(Profile profile) {
     const String tag = 'proxy';
     final String raw = profile.rawConfig.trim();
@@ -464,10 +508,19 @@ class SingBoxConfigGenerator {
     }
   }
 
-  Map<String, dynamic> _wrap(Map<String, dynamic> outbound,
-      {bool isTor = false}) {
+  Map<String, dynamic> _wrap(
+    Map<String, dynamic> outbound, {
+    bool isTor = false,
+    List<Map<String, dynamic>> hops = const <Map<String, dynamic>>[],
+  }) {
     final Object? srv = outbound['server'];
     final String proxyServer = srv is String ? srv.trim() : '';
+
+    // زنجیرهٔ Multi-Hop؛ اگر هاپی نباشد فقط خودِ proxy برمی‌گردد.
+    final List<Map<String, dynamic>> chain =
+        _buildHopChain(outbound, hops, isTor: isTor);
+    final List<String> hopServers =
+        isTor ? const <String>[] : _collectHopServers(hops);
 
     return {
       'log': {'level': 'info', 'timestamp': true},
@@ -498,8 +551,8 @@ class SingBoxConfigGenerator {
           'sniff_override_destination': true,
         }
       ],
-      'outbounds': [
-        outbound,
+      'outbounds': <Map<String, dynamic>>[
+        ...chain,
         {'type': 'direct', 'tag': 'direct'},
         {'type': 'block', 'tag': 'block'},
         {'type': 'dns', 'tag': 'dns-out'}
@@ -541,6 +594,13 @@ class SingBoxConfigGenerator {
               'domain': <String>[proxyServer],
               'outbound': 'direct',
             },
+          // سرور هر هاپ باید مستقیم حل و وصل شود، وگرنه sing-box
+          // می‌خواهد آدرس هاپ را از داخل همان تونل پیدا کند => حلقه.
+          if (hopServers.isNotEmpty)
+            {
+              'domain': hopServers,
+              'outbound': 'direct',
+            },
           // ۴) در حالت Tor هیچ UDP نداریم (SOCKS5 تور UDP ندارد).
           //    پورت ۵۳ و loopback بالاتر هندل شده‌اند، پس DNS سالم می‌ماند.
           if (isTor)
@@ -563,6 +623,55 @@ class SingBoxConfigGenerator {
         'auto_detect_interface': true,
       }
     };
+  }
+
+  /// زنجیرهٔ Multi-Hop را می‌سازد.
+  ///
+  /// خروجی: [proxy, hop-0, hop-1, ...]
+  /// proxy.detour = hop-0 و hop-0.detour = hop-1 و آخرین هاپ بدون detour.
+  /// یعنی مسیر واقعی بسته‌ها: device -> آخرین هاپ -> ... -> hop-0 -> proxy.
+  /// پس پروفایل فعال همیشه نود خروجی (exit) باقی می‌ماند.
+  List<Map<String, dynamic>> _buildHopChain(
+    Map<String, dynamic> outbound,
+    List<Map<String, dynamic>> hops, {
+    bool isTor = false,
+  }) {
+    final Map<String, dynamic> head = Map<String, dynamic>.from(outbound);
+
+    // در حالت Tor زنجیره‌سازی معنا ندارد: SOCKS محلی خودش مسیر پیازی دارد.
+    if (isTor || hops.isEmpty) {
+      return <Map<String, dynamic>>[head];
+    }
+
+    head['tag'] = 'proxy';
+    final List<Map<String, dynamic>> chain = <Map<String, dynamic>>[head];
+
+    for (int i = 0; i < hops.length; i++) {
+      final Map<String, dynamic> hop = Map<String, dynamic>.from(hops[i]);
+      hop['tag'] = 'hop-$i';
+      hop.remove('detour');
+      chain.add(hop);
+    }
+
+    for (int i = 0; i < chain.length - 1; i++) {
+      chain[i]['detour'] = chain[i + 1]['tag'];
+    }
+    return chain;
+  }
+
+  /// آدرس سرور هاپ‌ها برای ساخت قاعدهٔ direct و جلوگیری از حلقهٔ resolve.
+  List<String> _collectHopServers(List<Map<String, dynamic>> hops) {
+    final List<String> out = <String>[];
+    for (final Map<String, dynamic> hop in hops) {
+      final Object? server = hop['server'];
+      if (server is String) {
+        final String value = server.trim();
+        if (value.isNotEmpty && !out.contains(value)) {
+          out.add(value);
+        }
+      }
+    }
+    return out;
   }
 
   /// تشخیص پروفایل تور: SOCKS روی لوکال‌هاست
