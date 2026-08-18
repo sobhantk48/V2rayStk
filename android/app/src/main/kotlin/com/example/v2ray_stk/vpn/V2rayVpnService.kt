@@ -102,6 +102,10 @@ class V2rayVpnService : VpnService() {
     @Volatile
     private var inDestroy = false
 
+    /** SERVICE_STOP_FIX_V1 — آخرین startId برای stopSelf(startId) دقیق */
+    @Volatile
+    private var lastStartId: Int = -1
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private var bridgeStarted = false
     private var bridgeRetry = 0
@@ -156,6 +160,9 @@ class V2rayVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // SERVICE_STOP_FIX_V1
+        lastStartId = startId
+        Log.d(TAG, "onStartCommand action=" + (intent?.action ?: "null") + " startId=" + startId)
         when (intent?.action) {
             ACTION_DISCONNECT -> {
                 // قطع دستی توسط کاربر: prefs پاک شود تا ریبوت باعث اتصال خودسر نشود
@@ -416,8 +423,9 @@ class V2rayVpnService : VpnService() {
     @Synchronized
     private fun stopVpn(fromDestroy: Boolean = false) {
         if (teardownDone) {
-            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-            if (!fromDestroy && !inDestroy) runCatching { stopSelf() }
+            Log.d(TAG, "stopVpn تکراری (teardownDone=true) — فقط خاتمهٔ سرویس")
+            if (!fromDestroy && !inDestroy) terminateService()
+            else runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
             return
         }
         teardownDone = true
@@ -448,21 +456,61 @@ class V2rayVpnService : VpnService() {
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(NOTIFICATION_ID)
         }
-        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-        if (!fromDestroy && !inDestroy) runCatching { stopSelf() }
         Log.i(TAG, "stopVpn تکمیل شد؛ همهٔ رفرنس‌های tun آزاد شدند")
+        if (!fromDestroy && !inDestroy) {
+            terminateService()
+        } else {
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            Log.d(TAG, "خاتمه از مسیر onDestroy — stopSelf لازم نیست")
+        }
+    }
+
+    /**
+     * SERVICE_STOP_FIX_V1
+     * خاتمهٔ قطعی سرویس.
+     *
+     * چرا postDelayed؟ اگر stopSelf از داخل onStartCommand صدا زده شود،
+     * اندروید تا پایان برگشت onStartCommand سرویس را نمی‌کشد و اگر startId
+     * جدیدی برسد درخواست توقف بی‌اثر می‌ماند. با انداختن آن روی صف
+     * Looper، ابتدا onStartCommand تمام می‌شود و سپس توقف قطعی می‌شود.
+     */
+    private fun terminateService() {
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            .onSuccess { Log.i(TAG, "stopForeground(REMOVE) انجام شد") }
+            .onFailure { Log.w(TAG, "stopForeground failed: ${it.message}") }
+
+        mainHandler.post {
+            val id = lastStartId
+            val stoppedBySelfResult = if (id > 0) {
+                runCatching { stopSelf(id) }.isSuccess
+            } else {
+                false
+            }
+            Log.i(TAG, "stopSelf(startId=" + id + ") result=" + stoppedBySelfResult)
+            // fallback بدون قید startId تا در هر حالت سرویس بمیرد
+            runCatching { stopSelf() }
+                .onSuccess { Log.i(TAG, "stopSelf() فراخوانی شد") }
+                .onFailure { Log.w(TAG, "stopSelf() failed: ${it.message}") }
+        }
     }
 
     override fun onDestroy() {
+        Log.i(TAG, "onDestroy فراخوانی شد — شروع تخریب سرویس")
         // علامت‌گذاری مسیر تخریب تا stopVpn دوباره stopSelf نزند
         inDestroy = true
+        stopping = true
         if (running === this) running = null
         runCatching { stopVpn(fromDestroy = true) }
             .onFailure { Log.w(TAG, "onDestroy/stopVpn failed: ${it.message}") }
+        // SERVICE_STOP_FIX_V1 — هیچ callback معلقی نباید سرویس را زنده نگه دارد
+        runCatching { mainHandler.removeCallbacksAndMessages(null) }
+        Log.i(TAG, "onDestroy تکمیل شد؛ سرویس آزاد شد")
         super.onDestroy()
     }
 
     override fun onRevoke() {
+        Log.w(TAG, "onRevoke — اجازهٔ VPN توسط سیستم لغو شد")
+        runCatching { VpnPrefs.clearKeepLast(this) }
         stopVpn()
         super.onRevoke()
     }
