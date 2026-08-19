@@ -4,7 +4,7 @@ import 'package:v2ray_stk/features/profiles/domain/profile_type.dart';
 import 'package:v2ray_stk/features/sing_box/application/sing_box_config_generator.dart';
 
 /// تست‌های رگرسیون برای جلوگیری از بازگشت باگ‌های:
-/// 1) ناپایداری tun با stack=gvisor
+/// 1) بازگشت stack=system روی tun (خطای set read deadline: invalid argument)
 /// 2) حلقهٔ بازگشتی DNS (proxy-dns با detour=proxy)
 /// 3) بازگشت ترافیک لوکال (SOCKS محلی Tor) به داخل تونل
 void main() {
@@ -60,13 +60,13 @@ void main() {
   );
 
   group('tun stack', () {
-    test('از system استفاده می‌کند و هرگز gvisor نیست', () {
+    test('از gvisor استفاده می‌کند و هرگز system نیست', () {
       final config = configFor(vlessProfile);
       final tun = tunInbound(config);
 
       expect(tun, isNotNull, reason: 'inbound نوع tun باید وجود داشته باشد');
-      expect(tun!['stack'], 'system');
-      expect(tun['stack'], isNot('gvisor'));
+      expect(tun!['stack'], 'gvisor');
+      expect(tun['stack'], isNot('system'));
     });
   });
 
