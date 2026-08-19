@@ -551,7 +551,7 @@ class SingBoxConfigGenerator {
           'mtu': 1412,
           'auto_route': true,
           'strict_route': isTor,
-          'stack': 'system',
+          'stack': 'gvisor',
           'endpoint_independent_nat': true,
           'sniff': true,
           'sniff_timeout': '300ms',
