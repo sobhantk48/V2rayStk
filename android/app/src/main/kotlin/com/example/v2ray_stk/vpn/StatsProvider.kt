@@ -19,7 +19,7 @@ object StatsProvider {
         "http://ip-api.com/json/?fields=status,country,countryCode,city"
 
     /** پورت‌های رایج inbound محلی sing-box. اولی که جواب بدهد استفاده می‌شود. */
-    private val candidatePorts = intArrayOf(2080, 2081, 1080, 10808, 10809, 7890)
+    private val candidatePorts = intArrayOf(2080, 2081, 1080, 10809, 7890)
 
     private const val PING_INTERVAL_MS = 5_000L
     private const val GEO_INTERVAL_MS = 120_000L

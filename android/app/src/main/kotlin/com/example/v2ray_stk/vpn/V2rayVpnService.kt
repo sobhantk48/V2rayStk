@@ -23,6 +23,8 @@ class V2rayVpnService : VpnService() {
     }
 
     private var torDaemon: TorDaemon? = null
+    // XRAY_CHAIN_V1
+    private var xrayDaemon: XrayDaemon? = null
 
     companion object {
 
@@ -59,6 +61,7 @@ class V2rayVpnService : VpnService() {
 
         const val EXTRA_KILL_SWITCH = "extra_kill_switch"
         const val EXTRA_ALWAYS_ON = "extra_always_on"
+        const val EXTRA_XRAY_CONFIG = "xrayConfig"
         private const val TAG = "V2rayVpnService"
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "v2ray_stk_vpn"
@@ -188,12 +191,25 @@ class V2rayVpnService : VpnService() {
                 } else {
                     // اتصال معمولی از UI: همه چیز برای استارت‌های بعدی ذخیره شود
                     runCatching {
-                        VpnPrefs.save(this, config, torEnabled, killSwitch, alwaysOnVpn)
+                        VpnPrefs.save(
+                    this,
+                    config,
+                    torEnabled,
+                    killSwitch,
+                    alwaysOnVpn,
+                    resolveXrayConfig(intent),
+                )
                         VpnPrefs.saveLastConfig(this, config)
                     }
                 }
 
-                startVpn(config, torEnabled, killSwitch, alwaysOnVpn)
+                startVpn(
+                    config,
+                    torEnabled,
+                    killSwitch,
+                    alwaysOnVpn,
+                    resolveXrayConfig(intent),
+                )
             }
         }
         return START_NOT_STICKY
@@ -204,6 +220,7 @@ class V2rayVpnService : VpnService() {
         torEnabled: Boolean,
         killSwitch: Boolean = false,
         alwaysOnVpn: Boolean = false,
+        xrayConfig: String = "",
     ) {
         stopping = false
         teardownDone = false
@@ -229,7 +246,7 @@ class V2rayVpnService : VpnService() {
 
             if (!torEnabled) {
                 Log.d(TAG, "Tor غیرفعال است، TorDaemon اجرا نمی‌شود")
-                launchCore(tun, config)
+                startCoreChain(tun, config, xrayConfig)
                 return
             }
 
@@ -276,7 +293,7 @@ class V2rayVpnService : VpnService() {
                     pendingTun = null
                     Log.i(TAG, "Tor آماده است (100%)، استارت sing-box")
                     updateNotification("VPN در حال اجرا")
-                    launchCore(waiting, config)
+                    startCoreChain(waiting, config, xrayConfig)
                 }
             }
         } catch (e: Throwable) {
@@ -294,6 +311,86 @@ class V2rayVpnService : VpnService() {
      * آن را رها نکند، رفرنس tun باز می‌ماند و آیکون VPN اندروید پاک نمی‌شود.
      * با dup هر طرف کپی خودش را می‌بندد و tun قطعا تخریب می‌شود.
      */
+    // XRAY_CHAIN_V1 -----------------------------------------------------
+    /**
+     * کانفیگ Xray را از Intent می خواند و اگر نبود از حافظه بازیابی می کند.
+     * رشته خالی یعنی Xray غیرفعال و مسیر عادی sing-box اجرا می شود.
+     */
+    private fun resolveXrayConfig(intent: Intent?): String {
+        val fromIntent = intent?.getStringExtra("xrayConfig").orEmpty()
+        return if (fromIntent.isNotBlank()) fromIntent else VpnPrefs.xrayConfig(this)
+    }
+
+    /**
+     * لایه واسط بین establishTun و launchCore.
+     *
+     * اگر Xray فعال باشد اول پروسه native بالا می آید و تا باز شدن پورت socks
+     * صبر می شود، بعد sing-box استارت می خورد. اگر مستقیم launchCore صدا زده
+     * شود، sing-box به یک outbound مرده وصل می شود و همه ترافیک می سوزد.
+     *
+     * XrayDaemon.start بلاک کننده است، پس روی ترد جدا اجرا می شود و برگشت به
+     * main با mainHandler انجام می گیرد؛ عینا همان الگوی بوت استرپ Tor.
+     */
+    private fun startCoreChain(
+        tun: ParcelFileDescriptor,
+        config: String,
+        xrayConfig: String,
+    ) {
+        if (xrayConfig.isBlank()) {
+            Log.d(TAG, "Xray غیرفعال است، مستقیم sing-box اجرا می شود")
+            launchCore(tun, config)
+            return
+        }
+
+        val daemon = XrayDaemon(this@V2rayVpnService)
+        if (!daemon.isAvailable) {
+            Log.e(
+                TAG,
+                "باینری Xray در دسترس نیست: " + daemon.binaryFile().absolutePath,
+            )
+            runCatching { tun.close() }
+            updateNotification("هسته Xray در دسترس نیست")
+            setStatus(VpnStatus.DISCONNECTED)
+            stopVpn()
+            return
+        }
+
+        xrayDaemon = daemon
+        pendingTun = tun
+        updateNotification("در حال راه اندازی Xray…")
+        Log.d(TAG, "Xray فعال است، socks=" + daemon.socksAddress)
+
+        thread(name = "xray-bootstrap-wait", isDaemon = true) {
+            val ok = runCatching { daemon.start(xrayConfig, 12_000L) }
+                .getOrDefault(false)
+
+            mainHandler.post {
+                if (stopping) {
+                    Log.d(TAG, "بوت Xray تمام شد ولی سرویس در حال توقف است")
+                    return@post
+                }
+                val waiting = pendingTun
+                if (waiting == null) {
+                    Log.w(TAG, "tun معلق موجود نیست، استارت هسته لغو شد")
+                    return@post
+                }
+                if (!ok) {
+                    Log.e(TAG, "Xray آماده نشد: " + daemon.lastError)
+                    pendingTun = null
+                    runCatching { waiting.close() }
+                    updateNotification("اتصال Xray ناموفق بود")
+                    setStatus(VpnStatus.DISCONNECTED)
+                    stopVpn()
+                    return@post
+                }
+                pendingTun = null
+                Log.i(TAG, "Xray آماده است، استارت sing-box روی زنجیره")
+                updateNotification("VPN در حال اجرا")
+                launchCore(waiting, config)
+            }
+        }
+    }
+
     private fun launchCore(tun: ParcelFileDescriptor, config: String) {
         try {
             tunInterface = tun
@@ -446,6 +543,12 @@ class V2rayVpnService : VpnService() {
         runCatching { torDaemon?.stop() }
             .onFailure { Log.w(TAG, "TorDaemon.stop() failed: ${it.message}") }
         torDaemon = null
+
+        // XRAY_CHAIN_V1: Xray بعد از sing-box خوابانده می شود تا
+        // آخرین بسته های در پرواز جایی برای رفتن داشته باشند
+        runCatching { xrayDaemon?.stop() }
+            .onFailure { Log.w(TAG, "XrayDaemon.stop() failed: ${it.message}") }
+        xrayDaemon = null
 
         // حالا هیچ‌کس روی tun کار نمی‌کند
         closeTunFd()

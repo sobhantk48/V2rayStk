@@ -17,6 +17,8 @@ object VpnPrefs {
     private const val KEY_ALWAYS_ON = "always_on"
     private const val KEY_SPLIT_MODE = "split_mode"
     private const val KEY_SPLIT_APPS = "split_apps"
+    // XRAY_BRIDGE_V1
+    private const val KEY_XRAY_CONFIG = "xray_config"
 
     /** حالت‌های مجاز تونل تفکیکی */
     const val SPLIT_OFF = "off"
@@ -32,14 +34,27 @@ object VpnPrefs {
         torEnabled: Boolean,
         killSwitch: Boolean,
         alwaysOnVpn: Boolean,
+        xrayConfig: String = "",
     ) {
         prefs(context).edit()
             .putString(KEY_CONFIG, config)
             .putBoolean(KEY_TOR_ENABLED, torEnabled)
             .putBoolean(KEY_KILL_SWITCH, killSwitch)
             .putBoolean(KEY_ALWAYS_ON, alwaysOnVpn)
+            .putString(KEY_XRAY_CONFIG, xrayConfig)
             .apply()
     }
+
+    // XRAY_BRIDGE_V1: config JSON مخصوص هسته Xray (خالی = Xray غیرفعال)
+    fun xrayConfig(context: Context): String =
+        prefs(context).getString(KEY_XRAY_CONFIG, "").orEmpty()
+
+    fun saveXrayConfig(context: Context, xrayConfig: String) {
+        prefs(context).edit().putString(KEY_XRAY_CONFIG, xrayConfig).apply()
+    }
+
+    fun xrayEnabled(context: Context): Boolean =
+        xrayConfig(context).isNotBlank()
 
     /** پس از قطع دستی توسط کاربر صدا زده می‌شود تا ریبوت باعث اتصال خودسر نشود. */
         // SPLIT_PATCH_V2: keep split-tunnel settings when user disconnects

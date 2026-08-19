@@ -5,6 +5,11 @@ plugins {
 }
 
 android {
+    androidResources {
+        // فایل های geoip/geosite نباید فشرده شوند تا Xray مستقیم بخواندشان
+        noCompress += ["dat"]
+    }
+
     namespace "com.example.v2ray_stk"
     compileSdk 36
     ndkVersion "27.2.12479018"
@@ -46,7 +51,7 @@ android {
         jniLibs {
             excludes += ["armeabi-v7a/**", "lib/armeabi-v7a/**", "**/armeabi-v7a/**", "armeabi/**", "lib/armeabi/**", "**/armeabi/**", "x86/**", "lib/x86/**", "**/x86/**", "x86_64/**", "lib/x86_64/**", "**/x86_64/**", "mips/**", "lib/mips/**", "**/mips/**", "mips64/**", "lib/mips64/**", "**/mips64/**", "riscv64/**", "lib/riscv64/**", "**/riscv64/**"]
             // libbox.so باید بدون فشرده‌سازی و قابل mmap بماند
-            useLegacyPackaging false
+            useLegacyPackaging true
             keepDebugSymbols += ["**/libbox.so"]
             // حذف صریح ABIهای ناخواسته که از AAR می‌آیند
         }

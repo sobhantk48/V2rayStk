@@ -9,11 +9,13 @@ class VpnPlatformService {
     return status ?? 'disconnected';
   }
 
+  // XRAY_BRIDGE_V1
   Future<void> connect(
     String config, {
     bool torEnabled = false,
     bool killSwitch = false,
     bool alwaysOnVpn = false,
+    String xrayConfig = '',
   }) async {
     await _channel.invokeMethod<void>(
       'connect',
@@ -22,8 +24,20 @@ class VpnPlatformService {
         'torEnabled': torEnabled,
         'killSwitch': killSwitch,
         'alwaysOnVpn': alwaysOnVpn,
+        'xrayConfig': xrayConfig,
       },
     );
+  }
+
+  /// XRAY_BRIDGE_V1: نسخه هسته Xray؛ null یعنی باینری در دسترس نیست.
+  Future<String?> xrayVersion() async {
+    try {
+      return await _channel.invokeMethod<String>('xrayVersion');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
   }
 
   Future<void> disconnect() async {

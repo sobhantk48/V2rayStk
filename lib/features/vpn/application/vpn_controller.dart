@@ -15,6 +15,7 @@ import '../../sing_box/application/sing_box_config_generator.dart';
 import '../../sing_box/domain/sing_box_config.dart';
 import '../../sing_box/domain/sing_box_config_exception.dart';
 import 'admin_settings_reader.dart';
+import '../../xray/application/xray_config_generator.dart';
 
 enum VpnConnectionState {
   disconnected,
@@ -60,11 +61,15 @@ class VpnController extends Notifier<VpnConnectionState> {
     try {
       final AdminSettings settings = await _reader.read();
       final Profile profile = await _resolveActiveProfile(settings);
+      // XRAY_CHAIN_V1
+      final String sbJson = await _buildConfigJson(profile, settings);
+      final String xrayJson = XrayConfigGenerator.tryBuild(profile);
       await _service.connect(
-        await _buildConfigJson(profile, settings),
+        xrayJson.isEmpty ? sbJson : _redirectProxyToXray(sbJson),
         torEnabled: settings.torEnabled,
         killSwitch: settings.killSwitch,
         alwaysOnVpn: settings.alwaysOnVpn,
+        xrayConfig: xrayJson,
       );
       state = VpnConnectionState.connected;
     } catch (error, stackTrace) {
@@ -90,17 +95,65 @@ class VpnController extends Notifier<VpnConnectionState> {
     state = VpnConnectionState.connecting;
     try {
       final AdminSettings settings = await _reader.read();
+      // XRAY_CHAIN_V1
+      final String sbJson = await _buildConfigJson(profile, settings);
+      final String xrayJson = XrayConfigGenerator.tryBuild(profile);
       await _service.connect(
-        await _buildConfigJson(profile, settings),
+        xrayJson.isEmpty ? sbJson : _redirectProxyToXray(sbJson),
         torEnabled: settings.torEnabled,
         killSwitch: settings.killSwitch,
         alwaysOnVpn: settings.alwaysOnVpn,
+        xrayConfig: xrayJson,
       );
       state = VpnConnectionState.connected;
     } catch (error, stackTrace) {
       _logFailure('connectWithProfile', error, stackTrace);
       state = VpnConnectionState.disconnected;
       rethrow;
+    }
+  }
+
+  /// XRAY_CHAIN_V1
+  ///
+  /// وقتی هسته Xray فعال است، outbound اصلی sing-box (تگ `proxy`) به
+  /// SOCKS داخلی Xray روی 127.0.0.1 هدایت می‌شود تا کل ترافیک tun از
+  /// دل Xray بیرون برود. در این حالت multi-hop سمت sing-box بی‌اثر است.
+  String _redirectProxyToXray(String configJson) {
+    try {
+      final Object? decoded = jsonDecode(configJson);
+      if (decoded is! Map) {
+        return configJson;
+      }
+      final Map<String, dynamic> config = Map<String, dynamic>.from(decoded);
+      final Object? rawOutbounds = config['outbounds'];
+      if (rawOutbounds is! List) {
+        return configJson;
+      }
+
+      final List<dynamic> outbounds = List<dynamic>.from(rawOutbounds);
+      bool replaced = false;
+      for (int i = 0; i < outbounds.length; i++) {
+        final Object? item = outbounds[i];
+        if (item is Map && item['tag'] == 'proxy') {
+          outbounds[i] = <String, dynamic>{
+            'type': 'socks',
+            'tag': 'proxy',
+            'server': '127.0.0.1',
+            'server_port': XrayConfigGenerator.socksPort,
+            'version': '5',
+          };
+          replaced = true;
+          break;
+        }
+      }
+      if (!replaced) {
+        return configJson;
+      }
+
+      config['outbounds'] = outbounds;
+      return jsonEncode(config);
+    } catch (_) {
+      return configJson;
     }
   }
 
