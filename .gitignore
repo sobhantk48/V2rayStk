@@ -108,3 +108,10 @@ cleanup_project.py
 __pycache__/
 *.pyc
 tools/patches/
+
+# --- keep native libs (jniLibs) ---
+!android/app/src/main/jniLibs/
+!android/app/src/main/jniLibs/**/
+!android/app/src/main/jniLibs/**/*.so
+!assets/bin/
+!assets/bin/**/*
