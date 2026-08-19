@@ -522,6 +522,16 @@ class SingBoxConfigGenerator {
     final List<String> hopServers =
         isTor ? const <String>[] : _collectHopServers(hops);
 
+    // sing-box قاعدهٔ domain را روی IP خام تطبیق نمی‌دهد. پس برای
+    // سرورهایی که IP هستند باید ip_cidr بدهیم تا از تونل بیرون بمانند.
+    final List<String> directCidrs = <String>[
+      for (final String s in <String>[proxyServer, ...hopServers])
+        if (s.isNotEmpty && _isIpLiteral(s))
+          _bareHost(s).contains(':')
+              ? '${_bareHost(s)}/128'
+              : '${_bareHost(s)}/32',
+    ];
+
     return {
       'log': {'level': 'info', 'timestamp': true},
       'experimental': {
@@ -531,7 +541,7 @@ class SingBoxConfigGenerator {
         },
         'cache_file': {'enabled': true},
       },
-      'dns': _buildDns(isTor, proxyServer),
+      'dns': _buildDns(isTor, proxyServer, hopServers: hopServers),
       'inbounds': [
         {
           'type': 'tun',
@@ -601,6 +611,11 @@ class SingBoxConfigGenerator {
               'domain': hopServers,
               'outbound': 'direct',
             },
+          if (directCidrs.isNotEmpty)
+            {
+              'ip_cidr': directCidrs,
+              'outbound': 'direct',
+            },
           // ۴) در حالت Tor هیچ UDP نداریم (SOCKS5 تور UDP ندارد).
           //    پورت ۵۳ و loopback بالاتر هندل شده‌اند، پس DNS سالم می‌ماند.
           if (isTor)
@@ -660,19 +675,60 @@ class SingBoxConfigGenerator {
   }
 
   /// آدرس سرور هاپ‌ها برای ساخت قاعدهٔ direct و جلوگیری از حلقهٔ resolve.
+  // [hopdns-v3] robust hop server collection
   List<String> _collectHopServers(List<Map<String, dynamic>> hops) {
     final List<String> out = <String>[];
     for (final Map<String, dynamic> hop in hops) {
-      final Object? server = hop['server'];
-      if (server is String) {
-        final String value = server.trim();
+      _extractHopHostsInto(hop, out);
+    }
+    return out;
+  }
+
+  /// آدرس سرور را از کلیدهای رایج و ساختارهای تودرتو (مثل peers در
+  /// WireGuard) بیرون می‌کشد تا هیچ هاپی از قواعد direct جا نماند.
+  void _extractHopHostsInto(Map<String, dynamic> node, List<String> out) {
+    void add(Object? v) {
+      if (v is String) {
+        final String value = v.trim();
         if (value.isNotEmpty && !out.contains(value)) {
           out.add(value);
         }
       }
     }
-    return out;
+
+    for (final String key in const <String>[
+      'server',
+      'server_address',
+      'address',
+    ]) {
+      final Object? v = node[key];
+      if (v is List) {
+        for (final Object? item in v) {
+          add(item);
+        }
+      } else {
+        add(v);
+      }
+    }
+
+    final Object? peers = node['peers'];
+    if (peers is List) {
+      for (final Object? p in peers) {
+        if (p is Map) {
+          _extractHopHostsInto(Map<String, dynamic>.from(p), out);
+        }
+      }
+    }
+
+    for (final MapEntry<String, dynamic> e in node.entries) {
+      if (e.key == 'peers') continue;
+      final Object? v = e.value;
+      if (v is Map) {
+        _extractHopHostsInto(Map<String, dynamic>.from(v), out);
+      }
+    }
   }
+
 
   /// تشخیص پروفایل تور: SOCKS روی لوکال‌هاست
   bool _isTorProfile(Profile profile) {
@@ -691,7 +747,11 @@ class SingBoxConfigGenerator {
   /// DNS بدون حلقه:
   ///  - bootstrap-dns : مستقیم (direct) برای حل دامنه‌ی سرور پروکسی
   ///  - proxy-dns     : تور -> DNSPort محلی 5353 ، غیرتور -> DNS روی TCP از داخل تونل
-  Map<String, dynamic> _buildDns(bool isTor, String proxyServer) {
+  Map<String, dynamic> _buildDns(
+    bool isTor,
+    String proxyServer, {
+    List<String> hopServers = const <String>[],
+  }) {
     final List<Map<String, dynamic>> servers = <Map<String, dynamic>>[
       // همیشه یک resolver مستقیم داریم تا آدرس سرور بدون تونل حل شود
       {
@@ -739,6 +799,15 @@ class SingBoxConfigGenerator {
           'domain': <String>[proxyServer],
           'server': 'bootstrap-dns',
         },
+      // دامنهٔ سرور هر هاپ هم باید با bootstrap حل شود. وگرنه resolve آن
+      // از proxy-dns رد می‌شود که detour=proxy دارد و proxy خودش منتظر
+      // همین هاپ است -> بن‌بست و تایم‌اوت در Multi-Hop.
+      for (final String hopServer in hopServers)
+        if (hopServer.isNotEmpty && !_isIpLiteral(hopServer))
+          {
+            'domain': <String>[hopServer],
+            'server': 'bootstrap-dns',
+          },
       {
         'domain_suffix': <String>['.local', '.lan', '.home'],
         'server': isTor ? 'block-dns' : 'bootstrap-dns',
@@ -780,15 +849,27 @@ class SingBoxConfigGenerator {
   }
 
   /// آیا رشته یک IP خام است؟ (برای IP نیازی به DNS rule نیست)
+  /// آیا رشته یک IP خام است؟ (براکت IPv6 اول حذف می‌شود)
   bool _isIpLiteral(String host) {
-    if (host.contains(':')) return true; // IPv6
-    final parts = host.split('.');
+    final h = _bareHost(host);
+    if (h.isEmpty) return false;
+    if (h.contains(':')) return true; // IPv6
+    final parts = h.split('.');
     if (parts.length != 4) return false;
     for (final p in parts) {
       final n = int.tryParse(p);
       if (n == null || n < 0 || n > 255) return false;
     }
     return true;
+  }
+
+  /// '[2001:db8::1]' -> '2001:db8::1' ؛ برای ساخت CIDR معتبر لازم است.
+  String _bareHost(String host) {
+    var h = host.trim();
+    if (h.length > 2 && h.startsWith('[') && h.endsWith(']')) {
+      h = h.substring(1, h.length - 1);
+    }
+    return h;
   }
 
   Map<String, dynamic> _buildSocksOutbound(
