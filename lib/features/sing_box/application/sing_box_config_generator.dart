@@ -756,9 +756,12 @@ class SingBoxConfigGenerator {
       // همیشه یک resolver مستقیم داریم تا آدرس سرور بدون تونل حل شود
       {
         'tag': 'bootstrap-dns',
-        'address': '8.8.8.8',
+        // TCP بهجای UDP خام: در شبکههایی که UDP مسدود است،
+        // resolver مستقیم همیشه جواب میدهد و دیگر deadline نمیخورد.
+        'address': 'tcp://8.8.8.8',
         'strategy': 'ipv4_only',
         'detour': 'direct',
+        'tcp_fast_open': true,
       },
       if (isTor)
         {
