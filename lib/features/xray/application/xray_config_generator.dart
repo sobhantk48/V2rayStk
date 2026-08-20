@@ -23,16 +23,43 @@ class XrayConfigGenerator {
   };
 
   /// آیا این پروفایل باید با هسته Xray اجرا شود؟
+  ///
+  /// NEEDS_XRAY_V2: علاوه بر xhttp/splithttp، پروتکل‌های Reality و
+  /// XTLS Vision هم فقط روی Xray کار می‌کنند و باید اینجا تشخیص داده شوند
+  /// وگرنه به sing-box می‌روند و خطای unsupported xhttp transport می‌دهند.
   static bool needsXray(Profile profile) {
     final String raw = profile.rawConfig.toLowerCase();
+
+    // نشانگر صریح در لینک
     if (raw.contains('xray=1')) {
       return true;
     }
+
+    // transport هایی که فقط Xray دارد (xhttp / splithttp)
+    // هم شکل type= و هم شکل net= را پوشش می‌دهیم
     for (final String net in _xrayOnlyNetworks) {
-      if (raw.contains('type=$net')) {
+      if (raw.contains('type=$net') || raw.contains('net=$net')) {
         return true;
       }
     }
+
+    // XTLS Vision فقط روی هسته Xray اجرا می‌شود
+    if (raw.contains('xtls-rprx-vision') || raw.contains('flow=xtls')) {
+      return true;
+    }
+
+    // Reality: هم پارامتر security=reality و هم فیلدهای اختصاصی
+    if (raw.contains('security=reality') ||
+        raw.contains('realitysettings') ||
+        raw.contains('reality_opts')) {
+      return true;
+    }
+
+    // لینک Reality معمولاً pbk (publicKey) و sid (shortId) دارد
+    if (raw.contains('pbk=') && raw.contains('sid=')) {
+      return true;
+    }
+
     return false;
   }
 
