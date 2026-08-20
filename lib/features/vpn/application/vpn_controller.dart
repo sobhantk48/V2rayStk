@@ -158,10 +158,16 @@ class VpnController extends Notifier<VpnConnectionState> {
   /// tun / DNS / routing / firewall دست‌نخورده می‌ماند و فقط
   /// خروجی نهایی از دل Xray عبور می‌کند.
   
-  /// XRAY_LOOP_FIX_V1
-  /// به کانفیگ sing-box یک قانون route اضافه می کند تا مقصد سرور واقعی
-  /// Xray مستقیم برود و دوباره وارد تونل نشود. بدون این قانون یک حلقه
-  /// بی نهایت بین TUN و پروسه Xray شکل می گیرد.
+  /// XRAY_LOOP_FIX_V1 + XRAY_DNS_FIX_V2
+  ///
+  /// در حالت Xray، پروفایلی که به sing-box می رسد قلابی است
+  /// (socks://127.0.0.1) پس _buildDns دامنه سرور واقعی را نمی شناسد و
+  /// برای آن قانون bootstrap نمی سازد. نتیجه: کوئری resolve سرور به
+  /// proxy-dns می افتد که detour=proxy دارد و proxy همان SOCKS خود
+  /// Xray است که منتظر همین resolve است -> بن بست.
+  /// اینجا هر دو قانون لازم تزریق می شود:
+  ///   1) route: مقصد سرور واقعی مستقیم برود و دوباره وارد TUN نشود.
+  ///   2) dns: دامنه سرور واقعی با bootstrap-dns (direct) حل شود.
   String _bypassXrayServer(String sbJson, Profile profile) {
     final String host = XrayConfigGenerator.serverHostOf(profile);
     if (host.isEmpty) {
@@ -170,21 +176,34 @@ class VpnController extends Notifier<VpnConnectionState> {
     try {
       final Map<String, dynamic> root =
           jsonDecode(sbJson) as Map<String, dynamic>;
+      final bool isIp =
+          RegExp(r'^[0-9.]+$').hasMatch(host) || host.contains(':');
+
       final Map<String, dynamic> route =
           (root['route'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-      final List<dynamic> rules =
+      final List<dynamic> routeRules =
           (route['rules'] as List<dynamic>?) ?? <dynamic>[];
-
-      final bool isIp = RegExp(r'^[0-9.]+$').hasMatch(host) || host.contains(':');
-      final Map<String, dynamic> rule = <String, dynamic>{
+      routeRules.insert(0, <String, dynamic>{
         if (isIp) 'ip_cidr': <String>[host.contains(':') ? host : '$host/32'],
         if (!isIp) 'domain': <String>[host],
         'outbound': 'direct',
-      };
-
-      rules.insert(0, rule);
-      route['rules'] = rules;
+      });
+      route['rules'] = routeRules;
       root['route'] = route;
+
+      if (!isIp) {
+        final Map<String, dynamic> dns =
+            (root['dns'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+        final List<dynamic> dnsRules =
+            (dns['rules'] as List<dynamic>?) ?? <dynamic>[];
+        dnsRules.insert(0, <String, dynamic>{
+          'domain': <String>[host],
+          'server': 'bootstrap-dns',
+        });
+        dns['rules'] = dnsRules;
+        root['dns'] = dns;
+      }
+
       return jsonEncode(root);
     } catch (_) {
       return sbJson;
