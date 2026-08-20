@@ -761,7 +761,6 @@ class SingBoxConfigGenerator {
         'address': 'tcp://8.8.8.8',
         'strategy': 'ipv4_only',
         'detour': 'direct',
-        'tcp_fast_open': true,
       },
       if (isTor)
         {

@@ -228,24 +228,22 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun disconnect() {
-        val intent = Intent(this, V2rayVpnService::class.java).apply {
-            action = V2rayVpnService.ACTION_DISCONNECT
-        }
-
-        // روی Android 8+ اگر اپ در پس‌زمینه باشد startService پرتاب می‌کند
-        // و intent هرگز به سرویس نمی‌رسد -> آیکون VPN باقی می‌ماند.
-        val delivered = runCatching {
-            if (Build.VERSION.SDK_INT >= 26) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
+        // مسیر اصلی: توقف مستقیم سرویس (بدون startForegroundService)
+        // startForegroundService در حالت disconnect باعث
+        // ForegroundServiceDidNotStartInTimeException و کرش اپ می‌شود.
+        val stopped = runCatching {
+            V2rayVpnService.requestStop(applicationContext)
             true
         }.getOrElse { false }
 
-        if (!delivered) {
-            // مسیر پشتیبان: توقف مستقیم سرویس بدون عبور از Intent
-            runCatching { V2rayVpnService.requestStop(applicationContext) }
+        if (!stopped) {
+            // مسیر پشتیبان: فقط اگر اپ در فورگراند است از Intent استفاده کن
+            runCatching {
+                val intent = Intent(this, V2rayVpnService::class.java).apply {
+                    action = V2rayVpnService.ACTION_DISCONNECT
+                }
+                startService(intent)
+            }
         }
 
         // وضعیت UI را فوراً هماهنگ کن تا کاربر منتظر نماند.
