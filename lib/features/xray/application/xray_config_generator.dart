@@ -72,6 +72,23 @@ class XrayConfigGenerator {
           },
         },
       ],
+      // XRAY_LOOP_FIX_V1: مسیریابی صریح تا ترافیک لوکال
+      // و شبکه خصوصی وارد تونل نشود.
+      'routing': <String, dynamic>{
+        'domainStrategy': 'AsIs',
+        'rules': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'type': 'field',
+            'ip': <String>['geoip:private'],
+            'outboundTag': 'block',
+          },
+          <String, dynamic>{
+            'type': 'field',
+            'network': 'tcp,udp',
+            'outboundTag': 'proxy',
+          },
+        ],
+      },
       'outbounds': <Map<String, dynamic>>[
         outbound,
         <String, dynamic>{'tag': 'direct', 'protocol': 'freedom'},
@@ -443,5 +460,21 @@ class XrayConfigGenerator {
         value.replaceAll('-', '+').replaceAll('_', '/').split('#').first.trim();
     final int mod = clean.length % 4;
     return mod == 0 ? clean : clean + '=' * (4 - mod);
+  }
+
+  /// XRAY_LOOP_FIX_V1
+  /// آدرس سرور واقعی پروفایل را برمی گرداند تا sing-box بتواند آن را
+  /// مستقیم (direct) بفرستد و ترافیک Xray داخل TUN حلقه نزند.
+  static String serverHostOf(Profile profile) {
+    final String raw = (profile.server ?? '').trim();
+    if (raw.isEmpty) {
+      return '';
+    }
+    return raw;
+  }
+
+  /// پورت سرور واقعی پروفایل.
+  static int serverPortOf(Profile profile) {
+    return profile.port ?? 0;
   }
 }

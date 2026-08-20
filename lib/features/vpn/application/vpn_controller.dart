@@ -62,10 +62,15 @@ class VpnController extends Notifier<VpnConnectionState> {
       final AdminSettings settings = await _reader.read();
       final Profile profile = await _resolveActiveProfile(settings);
       // XRAY_CHAIN_V1
-      final String sbJson = await _buildConfigJson(profile, settings);
       final String xrayJson = XrayConfigGenerator.tryBuild(profile);
+      final String sbJson = xrayJson.isEmpty
+          ? await _buildConfigJson(profile, settings)
+          : _bypassXrayServer(
+              await _buildXrayShellConfig(profile, settings),
+              profile,
+            );
       await _service.connect(
-        xrayJson.isEmpty ? sbJson : _redirectProxyToXray(sbJson),
+        sbJson,
         torEnabled: settings.torEnabled,
         killSwitch: settings.killSwitch,
         alwaysOnVpn: settings.alwaysOnVpn,
@@ -96,10 +101,15 @@ class VpnController extends Notifier<VpnConnectionState> {
     try {
       final AdminSettings settings = await _reader.read();
       // XRAY_CHAIN_V1
-      final String sbJson = await _buildConfigJson(profile, settings);
       final String xrayJson = XrayConfigGenerator.tryBuild(profile);
+      final String sbJson = xrayJson.isEmpty
+          ? await _buildConfigJson(profile, settings)
+          : _bypassXrayServer(
+              await _buildXrayShellConfig(profile, settings),
+              profile,
+            );
       await _service.connect(
-        xrayJson.isEmpty ? sbJson : _redirectProxyToXray(sbJson),
+        sbJson,
         torEnabled: settings.torEnabled,
         killSwitch: settings.killSwitch,
         alwaysOnVpn: settings.alwaysOnVpn,
@@ -110,50 +120,6 @@ class VpnController extends Notifier<VpnConnectionState> {
       _logFailure('connectWithProfile', error, stackTrace);
       state = VpnConnectionState.disconnected;
       rethrow;
-    }
-  }
-
-  /// XRAY_CHAIN_V1
-  ///
-  /// وقتی هسته Xray فعال است، outbound اصلی sing-box (تگ `proxy`) به
-  /// SOCKS داخلی Xray روی 127.0.0.1 هدایت می‌شود تا کل ترافیک tun از
-  /// دل Xray بیرون برود. در این حالت multi-hop سمت sing-box بی‌اثر است.
-  String _redirectProxyToXray(String configJson) {
-    try {
-      final Object? decoded = jsonDecode(configJson);
-      if (decoded is! Map) {
-        return configJson;
-      }
-      final Map<String, dynamic> config = Map<String, dynamic>.from(decoded);
-      final Object? rawOutbounds = config['outbounds'];
-      if (rawOutbounds is! List) {
-        return configJson;
-      }
-
-      final List<dynamic> outbounds = List<dynamic>.from(rawOutbounds);
-      bool replaced = false;
-      for (int i = 0; i < outbounds.length; i++) {
-        final Object? item = outbounds[i];
-        if (item is Map && item['tag'] == 'proxy') {
-          outbounds[i] = <String, dynamic>{
-            'type': 'socks',
-            'tag': 'proxy',
-            'server': '127.0.0.1',
-            'server_port': XrayConfigGenerator.socksPort,
-            'version': '5',
-          };
-          replaced = true;
-          break;
-        }
-      }
-      if (!replaced) {
-        return configJson;
-      }
-
-      config['outbounds'] = outbounds;
-      return jsonEncode(config);
-    } catch (_) {
-      return configJson;
     }
   }
 
@@ -182,6 +148,69 @@ class VpnController extends Notifier<VpnConnectionState> {
       'No profile selected. Add a config or enable Tor from the admin panel.',
     );
   }
+
+  /// XRAY_SHELL_V1
+  ///
+  /// وقتی هسته Xray فعال است، sing-box نباید outbound واقعی پروفایل را
+  /// بسازد (چون ترنسپورت‌هایی مثل xhttp را نمی‌شناسد و throw می‌کند).
+  /// در عوض یک پروفایل ساختگی از نوع SOCKS می‌سازیم که به inbound
+  /// داخلی Xray روی 127.0.0.1 اشاره می‌کند. بدین ترتیب کل زنجیره
+  /// tun / DNS / routing / firewall دست‌نخورده می‌ماند و فقط
+  /// خروجی نهایی از دل Xray عبور می‌کند.
+  
+  /// XRAY_LOOP_FIX_V1
+  /// به کانفیگ sing-box یک قانون route اضافه می کند تا مقصد سرور واقعی
+  /// Xray مستقیم برود و دوباره وارد تونل نشود. بدون این قانون یک حلقه
+  /// بی نهایت بین TUN و پروسه Xray شکل می گیرد.
+  String _bypassXrayServer(String sbJson, Profile profile) {
+    final String host = XrayConfigGenerator.serverHostOf(profile);
+    if (host.isEmpty) {
+      return sbJson;
+    }
+    try {
+      final Map<String, dynamic> root =
+          jsonDecode(sbJson) as Map<String, dynamic>;
+      final Map<String, dynamic> route =
+          (root['route'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+      final List<dynamic> rules =
+          (route['rules'] as List<dynamic>?) ?? <dynamic>[];
+
+      final bool isIp = RegExp(r'^[0-9.]+$').hasMatch(host) || host.contains(':');
+      final Map<String, dynamic> rule = <String, dynamic>{
+        if (isIp) 'ip_cidr': <String>[host.contains(':') ? host : '$host/32'],
+        if (!isIp) 'domain': <String>[host],
+        'outbound': 'direct',
+      };
+
+      rules.insert(0, rule);
+      route['rules'] = rules;
+      root['route'] = route;
+      return jsonEncode(root);
+    } catch (_) {
+      return sbJson;
+    }
+  }
+
+  Future<String> _buildXrayShellConfig(
+    Profile profile,
+    AdminSettings settings,
+  ) async {
+    final Profile shell = Profile(
+      id: profile.id,
+      name: profile.name,
+      type: ProfileType.socks,
+      rawConfig: 'socks://127.0.0.1:'
+          '${XrayConfigGenerator.socksPort}#xray-shell',
+      createdAt: profile.createdAt,
+      server: '127.0.0.1',
+      port: XrayConfigGenerator.socksPort,
+      isActive: profile.isActive,
+      groupId: profile.groupId,
+      subscriptionId: profile.subscriptionId,
+    );
+    return _buildConfigJson(shell, settings);
+  }
+
 
   Future<String> _buildConfigJson(
     Profile profile,
