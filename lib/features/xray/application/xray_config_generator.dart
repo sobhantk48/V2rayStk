@@ -82,6 +82,21 @@ class XrayConfigGenerator {
     final Map<String, dynamic> outbound = _outbound(profile);
     return <String, dynamic>{
       'log': <String, dynamic>{'loglevel': 'warning'},
+      // XRAY_DNS_V2: بدون این بلوک، Xray هیچ resolver ای ندارد و
+      // دامنه‌های sniff شده (youtube.com و ...) حل نمی‌شوند.
+      'dns': <String, dynamic>{
+        'servers': <dynamic>[
+          <String, dynamic>{
+            'address': '1.1.1.1',
+            'domains': <String>['geosite:geolocation-!cn'],
+          },
+          '8.8.8.8',
+          'localhost',
+        ],
+        'queryStrategy': 'UseIPv4',
+        'disableCache': false,
+        'tag': 'dns-in',
+      },
       'inbounds': <Map<String, dynamic>>[
         <String, dynamic>{
           'tag': 'socks-in',
@@ -102,12 +117,28 @@ class XrayConfigGenerator {
       // XRAY_LOOP_FIX_V1: مسیریابی صریح تا ترافیک لوکال
       // و شبکه خصوصی وارد تونل نشود.
       'routing': <String, dynamic>{
-        'domainStrategy': 'AsIs',
+        // XRAY_DNS_V2: IPIfNonMatch لازم است تا دامنه sniff شده
+        // به IP تبدیل و درست مسیریابی شود.
+        'domainStrategy': 'IPIfNonMatch',
         'rules': <Map<String, dynamic>>[
+          // پرس‌وجوهای DNS خود Xray مستقیم بروند (نه داخل تونل)
+          <String, dynamic>{
+            'type': 'field',
+            'inboundTag': <String>['dns-in'],
+            'outboundTag': 'direct',
+          },
+          <String, dynamic>{
+            'type': 'field',
+            'port': 53,
+            'network': 'udp',
+            'outboundTag': 'proxy',
+          },
+          // XRAY_DNS_V2: شبکه خصوصی باید direct باشد نه block،
+          // وگرنه ارتباط لوکال با sing-box قطع می‌شود.
           <String, dynamic>{
             'type': 'field',
             'ip': <String>['geoip:private'],
-            'outboundTag': 'block',
+            'outboundTag': 'direct',
           },
           <String, dynamic>{
             'type': 'field',
