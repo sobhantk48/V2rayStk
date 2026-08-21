@@ -758,7 +758,7 @@ class SingBoxConfigGenerator {
         'tag': 'bootstrap-dns',
         // TCP بهجای UDP خام: در شبکههایی که UDP مسدود است،
         // resolver مستقیم همیشه جواب میدهد و دیگر deadline نمیخورد.
-        'address': 'tcp://8.8.8.8',
+        'address': 'local',
         'strategy': 'ipv4_only',
         'detour': 'direct',
       },
@@ -775,7 +775,7 @@ class SingBoxConfigGenerator {
           // DoH روی پورت 443 از داخل تونل. سرویس‌های ابری مثل Railway
           // پورت 53 خروجی را می‌بندند، ولی 443 همیشه باز است.
           // IP مستقیم استفاده می‌شود تا نیازی به resolve اولیه نباشد.
-          'address': 'https://1.1.1.1/dns-query',
+          'address': 'https://8.8.8.8/dns-query',
           // با اینکه آدرس یک IP خالص است و resolve لازم ندارد،
           // این فیلد به‌عنوان بیمهٔ ضدحلقه باقی می‌ماند.
           'address_resolver': 'bootstrap-dns',
