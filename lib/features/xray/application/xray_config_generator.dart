@@ -67,12 +67,28 @@ class XrayConfigGenerator {
   ///
   /// هیچ‌وقت throw نمی‌کند تا یک لینک معیوب کل اتصال را نخواباند.
   static String tryBuild(Profile profile) {
-    if (!needsXray(profile)) {
+    final String raw = profile.rawConfig;
+    final bool need = needsXray(profile);
+    final String head = raw.length > 140 ? raw.substring(0, 140) : raw;
+    // ignore: avoid_print
+    print('[XRAY-DIAG] name="${profile.name}" needsXray=$need rawLen=${raw.length}');
+    // ignore: avoid_print
+    print('[XRAY-DIAG] rawHead=$head');
+    if (!need) {
+      // ignore: avoid_print
+      print('[XRAY-DIAG] نتیجه: needsXray=false -> Xray اجرا نمی شود');
       return '';
     }
     try {
-      return jsonEncode(build(profile));
-    } catch (_) {
+      final String out = jsonEncode(build(profile));
+      // ignore: avoid_print
+      print('[XRAY-DIAG] build موفق بود، bytes=${out.length}');
+      return out;
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('[XRAY-DIAG] build شکست خورد: $e');
+      // ignore: avoid_print
+      print('[XRAY-DIAG] stack: $st');
       return '';
     }
   }
