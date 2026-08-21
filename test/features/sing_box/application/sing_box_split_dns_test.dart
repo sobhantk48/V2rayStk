@@ -16,7 +16,7 @@ void main() {
     test('local address falls back to system resolver', () {
       expect(normalizeLocalDnsAddress(''), 'local');
       expect(normalizeLocalDnsAddress('system'), 'local');
-      expect(normalizeLocalDnsAddress('8.8.8.8'), '8.8.8.8');
+      expect(normalizeLocalDnsAddress('178.22.122.100'), '178.22.122.100');
     });
 
     test('adds local-dns server and a leading rule', () {

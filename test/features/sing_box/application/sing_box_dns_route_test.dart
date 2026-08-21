@@ -80,25 +80,35 @@ void main() {
       expect(bootstrap!['detour'], 'direct');
     });
 
-    test('proxy-dns از address_resolver استفاده می‌کند و حلقه نمی‌سازد', () {
+    test('proxy-dns روی DoH با IP خالص است و حلقه نمی‌سازد', () {
       final config = configFor(vlessProfile);
       final proxyDns = serverByTag(config, 'proxy-dns');
 
       expect(proxyDns, isNotNull);
-      expect(proxyDns!['address_resolver'], 'bootstrap-dns');
+      expect(proxyDns!['address'], 'https://1.1.1.1/dns-query');
+      expect(proxyDns['detour'], 'proxy');
+      expect(proxyDns['address_resolver'], isNull,
+          reason: 'DoH روی IP خالص نیازی به resolver ندارد');
     });
 
-    test('هیچ سرور DNS با detour=proxy و بدون address_resolver نیست', () {
+    test('هیچ سرور DNS با detour=proxy روی دامنهٔ حل‌نشده نیست', () {
       final config = configFor(vlessProfile);
 
+      final hostPattern = RegExp(r'^[a-zA-Z0-9+.-]+://([^/:]+)');
+      final ipPattern = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$');
+
       for (final server in dnsServers(config)) {
-        if (server['detour'] == 'proxy') {
-          expect(
-            server['address_resolver'],
-            isNotNull,
-            reason: 'سرور ${server['tag']} حلقهٔ DNS می‌سازد',
-          );
-        }
+        if (server['detour'] != 'proxy') continue;
+
+        final address = (server['address'] as String?) ?? '';
+        final host = hostPattern.firstMatch(address)?.group(1) ?? '';
+        final isIpLiteral = ipPattern.hasMatch(host) || host.contains(':');
+
+        expect(
+          isIpLiteral || server['address_resolver'] != null,
+          isTrue,
+          reason: 'سرور ${server['tag']} حلقهٔ DNS می‌سازد',
+        );
       }
     });
   });

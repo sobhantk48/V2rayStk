@@ -100,7 +100,8 @@ void main() {
 
       expect(proxyDns, isNotNull);
       expect(proxyDns!['address'], isNot('udp://127.0.0.1:5353'));
-      expect(proxyDns['address_resolver'], 'bootstrap-dns');
+      expect(proxyDns['address'], 'https://1.1.1.1/dns-query');
+      expect(proxyDns['address_resolver'], isNull);
     });
   });
 }
