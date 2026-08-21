@@ -87,10 +87,10 @@ class XrayConfigGenerator {
       'dns': <String, dynamic>{
         'servers': <dynamic>[
           <String, dynamic>{
-            'address': '1.1.1.1',
+            'address': 'https://1.1.1.1/dns-query',
             'domains': <String>['geosite:geolocation-!cn'],
           },
-          '8.8.8.8',
+          'https://1.0.0.1/dns-query',
           'localhost',
         ],
         'queryStrategy': 'UseIPv4',
@@ -110,7 +110,7 @@ class XrayConfigGenerator {
           'sniffing': <String, dynamic>{
             'enabled': true,
             'destOverride': <String>['http', 'tls', 'quic'],
-            'routeOnly': false,
+            'routeOnly': true,
           },
         },
       ],

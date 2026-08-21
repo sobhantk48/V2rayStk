@@ -835,7 +835,7 @@ class SingBoxConfigGenerator {
       'rules': rules,
       'final': 'proxy-dns',
       'strategy': 'ipv4_only',
-      'independent_cache': true,
+      'independent_cache': false,
       'disable_cache': false,
       'reverse_mapping': true,
     };
