@@ -115,3 +115,4 @@ tools/patches/
 !android/app/src/main/jniLibs/**/*.so
 !assets/bin/
 !assets/bin/**/*
+apk_out/
