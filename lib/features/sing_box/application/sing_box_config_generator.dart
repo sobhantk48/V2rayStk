@@ -598,6 +598,17 @@ class SingBoxConfigGenerator {
             'domain': <String>['localhost'],
             'outbound': 'direct',
           },
+          // resolverهای DoH باید مستقیم باشند، وگرنه برای حل نام
+          // خودشان دوباره به DNS نیاز می‌شود -> حلقه و deadline.
+          {
+            'ip_cidr': <String>[
+              '1.1.1.1/32',
+              '1.0.0.1/32',
+              '8.8.8.8/32',
+              '8.8.4.4/32',
+            ],
+            'outbound': 'direct',
+          },
           // ۳) خودِ سرور پروکسی نباید از داخل تونل عبور کند
           if (proxyServer.isNotEmpty)
             {
@@ -758,7 +769,7 @@ class SingBoxConfigGenerator {
         'tag': 'bootstrap-dns',
         // TCP بهجای UDP خام: در شبکههایی که UDP مسدود است،
         // resolver مستقیم همیشه جواب میدهد و دیگر deadline نمیخورد.
-        'address': 'udp://178.22.122.100',
+        'address': 'tcp://8.8.8.8',
         'strategy': 'ipv4_only',
         'detour': 'direct',
       },
@@ -779,7 +790,7 @@ class SingBoxConfigGenerator {
           // با اینکه آدرس یک IP خالص است و resolve لازم ندارد،
           // این فیلد به‌عنوان بیمهٔ ضدحلقه باقی می‌ماند.
           'strategy': 'ipv4_only',
-          'detour': 'proxy',
+          'detour': 'direct',
         },
       {'tag': 'block-dns', 'address': 'rcode://success'},
       // پاسخ‌دهندهٔ FakeIP: بدون هیچ رفت‌وبرگشت شبکه، آنی IP مصنوعی

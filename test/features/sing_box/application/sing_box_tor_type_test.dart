@@ -70,6 +70,6 @@ void main() {
   test('socks ریموت تحت تأثیر پچ قرار نگرفته', () {
     final server = proxyDns(remoteSocks)!;
     expect(server['address'], isNot('udp://127.0.0.1:5353'));
-    expect(server['detour'], 'proxy');
+    expect(server['detour'], 'direct');
   });
 }

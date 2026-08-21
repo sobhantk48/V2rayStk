@@ -116,3 +116,4 @@ tools/patches/
 !assets/bin/
 !assets/bin/**/*
 apk_out/
+*.bak*

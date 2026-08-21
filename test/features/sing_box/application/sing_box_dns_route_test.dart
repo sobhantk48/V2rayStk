@@ -5,7 +5,7 @@ import 'package:v2ray_stk/features/sing_box/application/sing_box_config_generato
 
 /// تست‌های رگرسیون برای جلوگیری از بازگشت باگ‌های:
 /// 1) بازگشت stack=system روی tun (خطای set read deadline: invalid argument)
-/// 2) حلقهٔ بازگشتی DNS (proxy-dns با detour=proxy)
+/// 2) حلقهٔ بازگشتی DNS (proxy-dns باید detour=direct باشد تا deadlock نشود)
 /// 3) بازگشت ترافیک لوکال (SOCKS محلی Tor) به داخل تونل
 void main() {
   const generator = SingBoxConfigGenerator();
@@ -86,7 +86,7 @@ void main() {
 
       expect(proxyDns, isNotNull);
       expect(proxyDns!['address'], 'https://1.1.1.1/dns-query');
-      expect(proxyDns['detour'], 'proxy');
+      expect(proxyDns['detour'], 'direct');
       expect(proxyDns['address_resolver'], isNull,
           reason: 'DoH روی IP خالص نیازی به resolver ندارد');
     });
