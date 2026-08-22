@@ -80,4 +80,53 @@ void main() {
 
     expect(api['external_controller'], '127.0.0.1:9091');
   });
+
+
+  // phase2 admin config patch tests
+  test('phase2 defaults leave new features disabled', () {
+    const AdminSettings settings = AdminSettings(
+      passwordHash: '',
+      salt: '',
+    );
+    final Map<String, dynamic> result = patcher.apply(baseConfig(), settings);
+
+    expect((result['inbounds'] as List).first['sniff'], isNull);
+    expect((result['outbounds'] as List).first['multiplex'], isNull);
+  });
+
+  test('phase2 mux skips non-proxy outbounds', () {
+    const AdminSettings settings = AdminSettings(
+      passwordHash: '',
+      salt: '',
+    );
+    final Map<String, dynamic> config = <String, dynamic>{
+      'outbounds': <Map<String, dynamic>>[
+        <String, dynamic>{'type': 'direct'},
+        <String, dynamic>{'type': 'block'},
+        <String, dynamic>{'type': 'dns'},
+        <String, dynamic>{'type': 'selector'},
+        <String, dynamic>{'type': 'urltest'},
+      ],
+    };
+
+    final Map<String, dynamic> result = patcher.apply(config, settings);
+
+    for (final dynamic outbound in result['outbounds'] as List) {
+      expect((outbound as Map)['multiplex'], isNull);
+    }
+  });
+
+  test('phase2 SNI skips outbound without tls', () {
+    const AdminSettings settings = AdminSettings(
+      passwordHash: '',
+      salt: '',
+    );
+    final Map<String, dynamic> result = patcher.apply(<String, dynamic>{
+      'outbounds': <Map<String, dynamic>>[
+        <String, dynamic>{'type': 'http'},
+      ],
+    }, settings);
+
+    expect((result['outbounds'] as List).first['tls'], isNull);
+  });
 }

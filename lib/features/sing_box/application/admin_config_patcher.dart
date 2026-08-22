@@ -17,6 +17,9 @@ class AdminConfigPatcher {
     _patchTunMtu(out, settings);
     _patchDns(out, settings);
     _patchClashApi(out, settings);
+    _patchSniff(out, settings);
+    _patchMux(out, settings);
+    _patchTlsSni(out, settings);
     return out;
   }
 
@@ -182,6 +185,101 @@ class AdminConfigPatcher {
       config['experimental'] = experimental;
     }
   }
+  void _patchSniff(Map<String, dynamic> config, AdminSettings settings) {
+    final Map<String, dynamic> admin = settings.toJson();
+    final bool enabled = admin['sniffEnabled'] is bool &&
+        admin['sniffEnabled'] as bool;
+    final bool overrideDestination =
+        admin['sniffOverrideDestination'] is bool &&
+        admin['sniffOverrideDestination'] as bool;
+    final String timeout = admin['sniffTimeout'] is String &&
+            (admin['sniffTimeout'] as String).trim().isNotEmpty
+        ? (admin['sniffTimeout'] as String).trim()
+        : '300ms';
+    final dynamic inbounds = config['inbounds'];
+    if (inbounds is! List) return;
+    for (final dynamic item in inbounds) {
+      if (item is! Map) continue;
+      if (!enabled) {
+        item.remove('sniff');
+        item.remove('sniff_override_destination');
+        item.remove('sniff_timeout');
+        continue;
+      }
+      item['sniff'] = true;
+      item['sniff_override_destination'] = overrideDestination;
+      item['sniff_timeout'] = timeout;
+    }
+  }
+
+  void _patchMux(Map<String, dynamic> config, AdminSettings settings) {
+    final Map<String, dynamic> admin = settings.toJson();
+    final bool enabled = admin['muxEnabled'] is bool &&
+        admin['muxEnabled'] as bool;
+    final String protocol = admin['muxProtocol'] is String
+        ? (admin['muxProtocol'] as String).trim().toLowerCase()
+        : 'h2mux';
+    const Set<String> protocols = <String>{'h2mux', 'smux', 'yamux'};
+    final int maxStreams = admin['muxMaxStreams'] is num
+        ? (admin['muxMaxStreams'] as num).toInt()
+        : 8;
+    final bool padding = admin['muxPadding'] is bool &&
+        admin['muxPadding'] as bool;
+    final dynamic outbounds = config['outbounds'];
+    if (outbounds is! List) return;
+    const Set<String> nonProxyTypes = <String>{
+      'direct',
+      'block',
+      'dns',
+      'selector',
+      'urltest',
+    };
+    for (final dynamic item in outbounds) {
+      if (item is! Map || nonProxyTypes.contains(item['type'])) continue;
+      if (!enabled) {
+        item.remove('multiplex');
+        continue;
+      }
+      item['multiplex'] = <String, dynamic>{
+        'enabled': true,
+        'protocol': protocols.contains(protocol) ? protocol : 'h2mux',
+        'max_streams': maxStreams,
+        'padding': padding,
+      };
+    }
+  }
+
+  void _patchTlsSni(Map<String, dynamic> config, AdminSettings settings) {
+    final Map<String, dynamic> admin = settings.toJson();
+    final bool enabled = admin['sniSpoofEnabled'] is bool &&
+        admin['sniSpoofEnabled'] as bool;
+    final String value = admin['sniSpoofValue'] is String
+        ? (admin['sniSpoofValue'] as String).trim()
+        : '';
+    final String fingerprint = admin['utlsFingerprint'] is String
+        ? (admin['utlsFingerprint'] as String).trim()
+        : '';
+    if (!enabled || value.isEmpty) return;
+    final dynamic outbounds = config['outbounds'];
+    if (outbounds is! List) return;
+    for (final dynamic item in outbounds) {
+      if (item is! Map) continue;
+      final dynamic rawTls = item['tls'];
+      if (rawTls is! Map) continue;
+      final Map<String, dynamic> tls = Map<String, dynamic>.from(rawTls);
+      tls['server_name'] = value;
+      if (fingerprint.isNotEmpty) {
+        final dynamic rawUtls = tls['utls'];
+        final Map<String, dynamic> utls = rawUtls is Map
+            ? Map<String, dynamic>.from(rawUtls)
+            : <String, dynamic>{};
+        utls['fingerprint'] = fingerprint;
+        tls['utls'] = utls;
+      }
+      item['tls'] = tls;
+    }
+  }
+
 }
 
 /// تگ سرور DNS محلی که برای Split DNS ساخته می‌شود.
