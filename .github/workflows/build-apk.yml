@@ -18,9 +18,8 @@ jobs:
     name: Build Flutter APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      
-      # NO_SETUP_JAVA_V1
+      - uses: actions/checkout@v4
+
       - name: Use preinstalled Java 17
         run: |
           set -euo pipefail
@@ -28,7 +27,6 @@ jobs:
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
           java -version
 
-      # NO_FLUTTER_ACTION_V1
       - name: Install Flutter (manual)
         run: |
           set -euo pipefail
@@ -87,11 +85,8 @@ jobs:
       - name: Show build errors
         if: failure()
         run: |
-          echo "================
-          if-no-files-found: warn
-          retention-days: 7
-
-      # مرحلهerror:|Unresolved reference|duplicate class|Conflicting configuration|Execution failed" build-log.txt | tail -n 80 || echo "no matches"
+          echo "=================== ERROR GREP ==================="
+          grep -nE "FAILURE:|BUILD FAILED|What went wrong|Caused by|error:|Unresolved reference|duplicate class|Conflicting configuration|Execution failed" build-log.txt | tail -n 80 || echo "no matches"
           echo "=================== LAST 250 LINES ==================="
           tail -n 250 build-log.txt || true
           echo "=================== GRADLE DAEMON LOGS ==================="
@@ -99,55 +94,33 @@ jobs:
 
       - name: Upload build log
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: build-log
           path: build-log.txt
           if-no-files-found: warn
           retention-days: 7
 
-      # مرحله جدید برای جمع‌آوری وابستگی‌ها
       - name: Package dependencies bundle
         if: always()
         run: |
           set -euo pipefail
           mkdir -p bundle_payload
-          # Gradle caches & wrapper
           if [ -d "$HOME/.gradle" ]; then
             mkdir -p bundle_payload/gradle_home
             cp -a "$HOME/.gradle/caches" bundle_payload/gradle_home/ 2>/dev/null || true
             cp -a "$HOME/.gradle/wrapper" bundle_payload/gradle_home/ 2>/dev/null || true
           fi
-          # Pub cache
           if [ -d "$HOME/.pub-cache" ]; then
             mkdir -p bundle_payload/pub_cache
-            cp -a "$
-          if-no-files-found: warn
-          retention-days: 7
-
-      # مرحله جدید برای جمع‌آوری وابستگی‌ها
-      - name: Package dependencies bundle
-        if: always()
-        run: |
-          set -euo pipefail
-          mkdir -p bundle_payload
-          # Gradle caches & wrapper
-          if [ -d "$HOME/.gradle" ]; then
-            mkdir -p bundle_payload/gradle_home
-            cp -a "$HOME/.gradle/caches" bundle_payload/gradle_home/ 2>/dev/null || true
-            cp -a "$HOME/.gradle/wrapper" bundle_payload/gradle_home/ 2>/dev/null || true
-          fi
-          # Pub cache
-          if [ -d "$HOME/.pub-cache" ]; then
-            mkdir -p bundle_payload/pub_cache
-            cp -a "$HOME/.pub-cache" bundle_payload/pub_cache/ 2>/dev/null || true
+            cp -a "$HOME/.pub-cache" bundle_payload/ 2>/dev/null || true
           fi
           tar -I 'zstd -19 -T0' -cf offline-dependencies.tar.zst -C bundle_payload .
           ls -lh offline-dependencies.tar.zst
 
       - name: Upload offline dependencies bundle
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: offline-dependencies
           path: offline-dependencies.tar.zst
@@ -166,7 +139,20 @@ jobs:
           echo "--- lib/ entries ---"
           unzip -l "$apk" | grep -E "lib/" || echo "no native libs"
           echo "--- ABI list ---"
-          abis=$(unerror::libbox.so not found in APK"
+          abis=$(unzip -l "$apk" | grep -oE "lib/[^/]+/" | sort -u | sed 's#lib/##; s#/##')
+          echo "$abis"
+          bad=$(echo "$abis" | grep -vE '^arm64-v8a$' | grep -v '^$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::unexpected ABI(s) in APK: $(echo $bad | tr '\n' ' ')"
+            exit 1
+          fi
+          if ! echo "$abis" | grep -qx 'arm64-v8a'; then
+            echo "::error::arm64-v8a native libs missing from APK"
+            exit 1
+          fi
+          echo "--- libbox.so ---"
+          unzip -l "$apk" | grep -E "libbox\.so" || {
+            echo "::error::libbox.so not found in APK"
             exit 1
           }
           echo "--- size ---"
@@ -174,7 +160,7 @@ jobs:
 
       - name: Upload APK
         if: success()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: V2rayStk-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
