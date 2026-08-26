@@ -1,73 +1,177 @@
-name: Build APK & Package Offline Dependencies
+name: Build APK
 
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  FLUTTER_VERSION: "3.47.1"
+
+permissions:
+  contents: write
+
 jobs:
-  build:
+  apk:
+    name: Build Flutter APK
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+      - name: Use preinstalled Java 17
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          java -version
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
+      - name: Install Flutter (manual)
+        run: |
+          set -euo pipefail
+          FV="${FLUTTER_VERSION}"
+          SDK="$HOME/flutter"
+          TB="flutter_linux_${FV}-stable.tar.xz"
+          URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/${TB}"
+          echo "try tarball: $URL"
+          if curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors -o "/tmp/${TB}" "$URL"; then
+            tar -xf "/tmp/${TB}" -C "$HOME"
+          else
+            echo "tarball failed -> git clone fallback"
+            git clone --depth 1 --branch "$FV" https://github.com/flutter/flutter.git "$SDK"
+          fi
+          echo "$SDK/bin" >> "$GITHUB_PATH"
+          export PATH="$SDK/bin:$PATH"
+          git config --global --add safe.directory "$SDK"
+          flutter --version
+          flutter config --no-analytics || true
+          flutter precache --android
 
-      - name: Make Gradle wrapper executable
-        run: chmod +x android/gradlew
+      - name: Verify AAR in repo
+        run: |
+          set -euo pipefail
+          ls -lh android/app/libs || true
+          git ls-files android/app/libs
+          count=$(find android/app/libs -maxdepth 1 -name '*.aar' | wc -l)
+          echo "aar count = $count"
+          if [ ! -f android/app/libs/libbox.aar ]; then
+            echo "::error::android/app/libs/libbox.aar is missing. Run: git add -f android/app/libs/libbox.aar"
+            exit 1
+          fi
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly 1 aar, found $count"
+            exit 1
+          fi
+          unzip -l android/app/libs/libbox.aar | head -n 30
 
-      - name: Get Flutter dependencies
+      - name: flutter pub get
         run: flutter pub get
 
-      - name: Build Android APK
-        run: flutter build apk --release
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos || true
 
-      - name: Package Offline Dependencies
+      - name: Run unit tests
+        run: flutter test --reporter compact
+
+      - name: Build release APK
         run: |
-          sudo apt-get update && sudo apt-get install -y zstd
-          mkdir -p /tmp/offline_payload
-          
-          # Copy Gradle cache and distributions
-          mkdir -p /tmp/offline_payload/.gradle
-          if [ -d "$HOME/.gradle/caches" ]; then
-            cp -r "$HOME/.gradle/caches" /tmp/offline_payload/.gradle/
-          fi
-          if [ -d "$HOME/.gradle/wrapper/dists" ]; then
-            mkdir -p /tmp/offline_payload/.gradle/wrapper
-            cp -r "$HOME/.gradle/wrapper/dists" /tmp/offline_payload/.gradle/wrapper/
-          fi
-          
-          # Copy Pub cache
-          if [ -d "$PUB_CACHE" ]; then
-            cp -r "$PUB_CACHE" /tmp/offline_payload/.pub-cache
-          elif [ -d "$HOME/.pub-cache" ]; then
-            cp -r "$HOME/.pub-cache" /tmp/offline_payload/.pub-cache
-          fi
+          set -o pipefail
+          flutter build apk --release --target-platform android-arm64 --verbose 2>&1 | tee build-log.txt
+          status=${PIPESTATUS[0]}
+          echo "build exit code: $status"
+          exit $status
 
-          # Archive everything into tar.zst
-          tar -C /tmp/offline_payload -cf - . | zstd -19 -T0 -o offline-dependencies.tar.zst
+      - name: Show build errors
+        if: failure()
+        run: |
+          echo "=================== ERROR GREP ==================="
+          grep -nE "FAILURE:|BUILD FAILED|What went wrong|Caused by|error:|Unresolved reference|duplicate class|Conflicting configuration|Execution failed" build-log.txt | tail -n 80 || echo "no matches"
+          echo "=================== LAST 250 LINES ==================="
+          tail -n 250 build-log.txt || true
+          echo "=================== GRADLE DAEMON LOGS ==================="
+          find ~/.gradle/daemon -name '*.log' -exec tail -n 60 {} \; 2>/dev/null || true
 
-      - name: Upload APK Artifact
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: build-log
+          path: build-log.txt
+          if-no-files-found: warn
+          retention-days: 7
 
-      - name: Upload Offline Dependencies Artifact
+      - name: Package dependencies bundle
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p bundle_payload
+          if [ -d "$HOME/.gradle" ]; then
+            mkdir -p bundle_payload/gradle_home
+            cp -a "$HOME/.gradle/caches" bundle_payload/gradle_home/ 2>/dev/null || true
+            cp -a "$HOME/.gradle/wrapper" bundle_payload/gradle_home/ 2>/dev/null || true
+          fi
+          if [ -d "$HOME/.pub-cache" ]; then
+            mkdir -p bundle_payload/pub_cache
+            cp -a "$HOME/.pub-cache" bundle_payload/ 2>/dev/null || true
+          fi
+          tar -I 'zstd -19 -T0' -cf offline-dependencies.tar.zst -C bundle_payload .
+          ls -lh offline-dependencies.tar.zst
+
+      - name: Upload offline dependencies bundle
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: offline-dependencies
           path: offline-dependencies.tar.zst
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: List APKs
+        if: always()
+        run: ls -lhR build/app/outputs/flutter-apk 2>/dev/null || echo "missing"
+
+      - name: Verify ABIs inside APK
+        if: success()
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          echo "--- lib/ entries ---"
+          unzip -l "$apk" | grep -E "lib/" || echo "no native libs"
+          echo "--- ABI list ---"
+          abis=$(unzip -l "$apk" | grep -oE "lib/[^/]+/" | sort -u | sed 's#lib/##; s#/##')
+          echo "$abis"
+          bad=$(echo "$abis" | grep -vE '^arm64-v8a$' | grep -v '^$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::unexpected ABI(s) in APK: $(echo $bad | tr '\n' ' ')"
+            exit 1
+          fi
+          if ! echo "$abis" | grep -qx 'arm64-v8a'; then
+            echo "::error::arm64-v8a native libs missing from APK"
+            exit 1
+          fi
+          echo "--- libbox.so ---"
+          unzip -l "$apk" | grep -E "libbox\.so" || {
+            echo "::error::libbox.so not found in APK"
+            exit 1
+          }
+          echo "--- size ---"
+          ls -lh "$apk"
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: V2rayStk-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

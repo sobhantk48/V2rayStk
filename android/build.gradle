@@ -1,5 +1,6 @@
 allprojects {
     repositories {
+        maven { url = uri("/root/local-maven-repo") }
         google()
         mavenCentral()
     }
@@ -15,4 +16,18 @@ subprojects {
 
 tasks.register("clean", Delete) {
     delete rootProject.layout.buildDirectory
+}
+
+subprojects {
+    plugins.withId("com.android.application") {
+        android {
+            ndkVersion = "27.2.12479018"
+        }
+    }
+
+    plugins.withId("com.android.library") {
+        android {
+            ndkVersion = "27.2.12479018"
+        }
+    }
 }
