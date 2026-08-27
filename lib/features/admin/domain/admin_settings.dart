@@ -40,6 +40,16 @@ class AdminSettings {
     this.autoConnectOnNetworkChange = false,
     this.alwaysOnVpn = false,
     this.hapticFeedback = true,
+    this.sniffEnabled = false,
+    this.sniffOverrideDestination = false,
+    this.sniffTimeout = '300ms',
+    this.muxEnabled = false,
+    this.muxProtocol = 'h2mux',
+    this.muxMaxStreams = 8,
+    this.muxPadding = false,
+    this.sniSpoofEnabled = false,
+    this.sniSpoofValue = '',
+    this.utlsFingerprint = 'chrome',
   });
 
   final String passwordHash;
@@ -93,6 +103,16 @@ class AdminSettings {
   final bool autoConnectOnNetworkChange;
   final bool alwaysOnVpn;
   final bool hapticFeedback;
+  final bool sniffEnabled;
+  final bool sniffOverrideDestination;
+  final String sniffTimeout;
+  final bool muxEnabled;
+  final String muxProtocol;
+  final int muxMaxStreams;
+  final bool muxPadding;
+  final bool sniSpoofEnabled;
+  final String sniSpoofValue;
+  final String utlsFingerprint;
 
   AdminSettings copyWith({
     String? passwordHash,
@@ -133,6 +153,16 @@ class AdminSettings {
     bool? autoConnectOnNetworkChange,
     bool? alwaysOnVpn,
     bool? hapticFeedback,
+    bool? sniffEnabled,
+    bool? sniffOverrideDestination,
+    String? sniffTimeout,
+    bool? muxEnabled,
+    String? muxProtocol,
+    int? muxMaxStreams,
+    bool? muxPadding,
+    bool? sniSpoofEnabled,
+    String? sniSpoofValue,
+    String? utlsFingerprint,
   }) {
     return AdminSettings(
       passwordHash: passwordHash ?? this.passwordHash,
@@ -159,8 +189,7 @@ class AdminSettings {
       splitDns: splitDns ?? this.splitDns,
       splitDnsDirectDomains:
           splitDnsDirectDomains ?? this.splitDnsDirectDomains,
-      splitDnsLocalServer:
-          splitDnsLocalServer ?? this.splitDnsLocalServer,
+      splitDnsLocalServer: splitDnsLocalServer ?? this.splitDnsLocalServer,
       fragmentEnabled: fragmentEnabled ?? this.fragmentEnabled,
       fragmentPackets: fragmentPackets ?? this.fragmentPackets,
       fragmentLength: fragmentLength ?? this.fragmentLength,
@@ -176,6 +205,17 @@ class AdminSettings {
           autoConnectOnNetworkChange ?? this.autoConnectOnNetworkChange,
       alwaysOnVpn: alwaysOnVpn ?? this.alwaysOnVpn,
       hapticFeedback: hapticFeedback ?? this.hapticFeedback,
+      sniffEnabled: sniffEnabled ?? this.sniffEnabled,
+      sniffOverrideDestination:
+          sniffOverrideDestination ?? this.sniffOverrideDestination,
+      sniffTimeout: sniffTimeout ?? this.sniffTimeout,
+      muxEnabled: muxEnabled ?? this.muxEnabled,
+      muxProtocol: muxProtocol ?? this.muxProtocol,
+      muxMaxStreams: muxMaxStreams ?? this.muxMaxStreams,
+      muxPadding: muxPadding ?? this.muxPadding,
+      sniSpoofEnabled: sniSpoofEnabled ?? this.sniSpoofEnabled,
+      sniSpoofValue: sniSpoofValue ?? this.sniSpoofValue,
+      utlsFingerprint: utlsFingerprint ?? this.utlsFingerprint,
     );
   }
 
@@ -218,6 +258,16 @@ class AdminSettings {
         'autoConnectOnNetworkChange': autoConnectOnNetworkChange,
         'alwaysOnVpn': alwaysOnVpn,
         'hapticFeedback': hapticFeedback,
+        'sniffEnabled': sniffEnabled,
+        'sniffOverrideDestination': sniffOverrideDestination,
+        'sniffTimeout': sniffTimeout,
+        'muxEnabled': muxEnabled,
+        'muxProtocol': muxProtocol,
+        'muxMaxStreams': muxMaxStreams,
+        'muxPadding': muxPadding,
+        'sniSpoofEnabled': sniSpoofEnabled,
+        'sniSpoofValue': sniSpoofValue,
+        'utlsFingerprint': utlsFingerprint,
       };
 
   static AdminSettings fromJson(Map<String, dynamic> json) {
@@ -295,6 +345,16 @@ class AdminSettings {
       autoConnectOnNetworkChange: boolOf('autoConnectOnNetworkChange', false),
       alwaysOnVpn: boolOf('alwaysOnVpn', false),
       hapticFeedback: boolOf('hapticFeedback', true),
+      sniffEnabled: boolOf('sniffEnabled', false),
+      sniffOverrideDestination: boolOf('sniffOverrideDestination', false),
+      sniffTimeout: stringOf('sniffTimeout', '300ms'),
+      muxEnabled: boolOf('muxEnabled', false),
+      muxProtocol: stringOf('muxProtocol', 'h2mux'),
+      muxMaxStreams: intOf('muxMaxStreams', 8),
+      muxPadding: boolOf('muxPadding', false),
+      sniSpoofEnabled: boolOf('sniSpoofEnabled', false),
+      sniSpoofValue: stringOf('sniSpoofValue', ''),
+      utlsFingerprint: stringOf('utlsFingerprint', 'chrome'),
     );
   }
 }

@@ -100,6 +100,25 @@ class Strings {
       fa ? 'مبهم‌سازی سبک WireGuard' : 'Lightweight WG obfuscation';
   String get lwoHint => fa ? 'LWO' : 'LWO';
   String get nordLynx => fa ? 'پشتیبانی NordLynx' : 'NordLynx support';
+  String get sniffEnabled => 'شناسایی پروتکل (Sniffing)';
+  String get sniffHint => 'تشخیص دامنه واقعی از ترافیک (بهبود مسیریابی)';
+  String get muxEnabled => 'چندتایی‌سازی (Mux)';
+  String get muxHint => 'ارسال چند جریان روی یک اتصال';
+  String get muxType => 'پروتکل Mux';
+  String get muxConcurrency => 'بیشینه جریان همزمان';
+  String get sniSpoofEnabled => 'جعل SNI';
+  String get sniSpoofHint => 'ارسال SNI جعلی در دست‌دهی TLS';
+  String get utlsFingerprint => 'اثر انگشت uTLS';
+  String get utlsFingerprintHint => 'تقلید اثر انگشت TLS مرورگر واقعی (مثلاً chrome)';
+
+  String get sniffHint =>
+      fa ? 'تشخیص خودکار پروتکل' : 'Automatic protocol detection';
+  String get muxHint =>
+      fa ? 'چندپلکسینگ برای کاهش Latency' : 'Multiplexing to reduce latency';
+  String get sniSpoofHint =>
+      fa ? 'جعل Server Name Indication' : 'Spoof Server Name Indication';
+  String get utlsFingerprintHint =>
+      fa ? 'شبیه‌سازی TLS مرورگرها' : 'Simulate browser TLS';
 
   String get allowUserEdit =>
       fa ? 'اجازه ویرایش پروفایل به کاربر' : 'Allow user to edit profiles';
@@ -167,4 +186,14 @@ class Strings {
   String get cameraError => fa ? 'خطای دوربین' : 'Camera error';
   String get invalidQr => fa ? 'QR نامعتبر است' : 'Invalid QR code';
   String get importedFromQr => fa ? 'از QR وارد شد' : 'Imported from QR';
+
+  String get sniffing => fa ? 'شناسایی پروتکل (Sniffing)' : 'Protocol Sniffing';
+  String get sniffOverrideDestination => fa ? 'بازنویسی مقصد با دامنهٔ شناسایی‌شده' : 'Override Destination';
+  String get sniffTimeout => fa ? 'زمان‌ انتظار شناسایی' : 'Sniff Timeout';
+  String get muxTitle => fa ? 'Mux (چندگانه‌سازی)' : 'Multiplexing (Mux)';
+  String get muxProtocol => fa ? 'پروتکل Mux' : 'Mux Protocol';
+  String get muxMaxStreams => fa ? 'حداکثر جریان همزمان' : 'Max Streams';
+  String get muxPadding => fa ? 'پدینگ Mux' : 'Mux Padding';
+  String get sniSpoofing => fa ? 'جعل SNI' : 'SNI Spoofing';
+  String get sniSpoofValue => fa ? 'مقدار SNI جعلی' : 'Spoofed SNI';
 }
