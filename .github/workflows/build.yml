@@ -1,6 +1,6 @@
 name: Build Android APK
 
-ln: 
+on:
   push:
     branches: [ "main", "master" ]
   pull_request:
@@ -50,7 +50,7 @@ jobs:
         run: flutter build apk --release
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@4
+        uses: actions/upload-artifact@v4
         with:
           name: vpn-stk-release
           path: build/app/outputs/flutter-apk/app-release.apk
